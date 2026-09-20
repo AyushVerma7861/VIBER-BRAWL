@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VIBER BRAWL - Last Viber Standing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+*{font-family:'Space Grotesk',sans-serif}
+.font-display{font-family:'Black Ops One',cursive}
+.font-mono{font-family:'JetBrains Mono',monospace}
+::-webkit-scrollbar{display:none}
+.voxel-shadow{box-shadow:6px 6px 0 #000}
+.stroke{ -webkit-text-stroke:2px #000; paint-order: stroke fill}
+.glass{backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px)}
+</style>
+</head>
+<body class="bg-[#F5E6B8] overflow-hidden select-none overscroll-none">
+<div id="app" class="relative w-screen h-[100dvh] overflow-hidden bg-[#F5E6B8]">
+<canvas id="c" class="absolute inset-0 w-full h-full block touch-none"></canvas>
+
+<!-- TOP HUD -->
+<div id="hud" class="absolute top-0 inset-x-0 p-2 md:p-4 pointer-events-none hidden">
+  <div class="max-w-[1200px] mx-auto flex gap-2 md:gap-3">
+    <div id="hud-cards" class="flex-1 grid grid-cols-4 gap-2"></div>
+    <div class="hidden md:flex flex-col items-center justify-center bg-black text-white rounded-2xl px-5 py-2 voxel-shadow border-2 border-black min-w-[130px]">
+      <div class="text-[10px] tracking-[0.2em] opacity-60">TIME</div>
+      <div id="timer" class="font-mono text-2xl leading-none">01:30</div>
+      <div id="aliveCount" class="text-[11px] font-bold tracking-widest bg-[#86EFAC] text-black px-2 py-0.5 rounded-full mt-1">4 ALIVE</div>
+    </div>
+  </div>
+  <div id="koFeed" class="max-w-[1200px] mx-auto mt-2 flex flex-col items-center gap-1"></div>
+</div>
+
+<!-- BOTTOM HUD -->
+<div id="bottomHud" class="absolute bottom-0 inset-x-0 p-2 md:p-4 pointer-events-none hidden">
+  <div class="max-w-[900px] mx-auto flex items-end justify-between gap-2">
+    <div class="flex gap-1.5 md:gap-2">
+      <div class="bg-black text-white rounded-xl px-2.5 py-2 flex items-center gap-2 border-2 border-black voxel-shadow">
+        <div class="w-7 h-7 rounded-lg bg-[#FACC15] flex items-center justify-center text-black font-black text-xs">Q</div>
+        <div><div class="text-[9px] tracking-widest opacity-60 leading-none">QUICK</div><div class="text-xs font-bold leading-none">LMB</div></div>
+        <div id="cdQ" class="w-1 h-8 bg-white/20 rounded-full overflow-hidden ml-1"><div class="w-full bg-[#FACC15] h-0"></div></div>
+      </div>
+      <div class="bg-black text-white rounded-xl px-2.5 py-2 flex items-center gap-2 border-2 border-black voxel-shadow">
+        <div class="w-7 h-7 rounded-lg bg-[#EF4444] flex items-center justify-center text-white font-black text-xs">H</div>
+        <div><div class="text-[9px] tracking-widest opacity-60 leading-none">HEAVY</div><div class="text-xs font-bold leading-none">RMB</div></div>
+        <div id="cdH" class="w-1 h-8 bg-white/20 rounded-full overflow-hidden ml-1"><div class="w-full bg-[#EF4444] h-0"></div></div>
+      </div>
+      <div class="bg-black text-white rounded-xl px-2.5 py-2 hidden md:flex items-center gap-2 border-2 border-black voxel-shadow">
+        <div class="w-7 h-7 rounded-lg bg-[#86EFAC] flex items-center justify-center text-black font-black text-[10px]">E</div>
+        <div><div id="abilityName" class="text-[9px] tracking-widest opacity-60 leading-none">SPARK DASH</div><div class="text-xs font-bold leading-none">SPECIAL</div></div>
+        <div id="cdE" class="w-1 h-8 bg-white/20 rounded-full overflow-hidden ml-1"><div class="w-full bg-[#86EFAC] h-full"></div></div>
+      </div>
+    </div>
+    <div class="flex gap-1.5">
+      <div class="bg-white border-2 border-black rounded-xl px-3 py-2 voxel-shadow hidden md:block">
+        <div class="text-[9px] tracking-widest opacity-50">DASH [SHIFT]</div>
+        <div id="dashDots" class="flex gap-1 mt-1"><span class="w-2 h-2 rounded-full bg-black"></span><span class="w-2 h-2 rounded-full bg-black"></span></div>
+      </div>
+      <div class="bg-[#86EFAC] border-2 border-black rounded-xl px-3 py-2 voxel-shadow flex items-center gap-2">
+        <div class="hidden md:block text-[10px] leading-tight font-bold">WASD MOVE<br>SPACE JUMP</div>
+        <div class="w-8 h-8 rounded-full bg-black text-white grid place-items-center">◎</div>
+      </div>
+    </div>
+  </div>
+  <div class="md:hidden flex justify-center gap-2 mt-2 pointer-events-auto">
+    <button id="mDash" class="bg-black text-white px-4 py-2 rounded-full text-xs font-bold border-2 border-black">DASH</button>
+    <button id="mSpecial" class="bg-[#86EFAC] text-black px-4 py-2 rounded-full text-xs font-bold border-2 border-black">SPECIAL [E]</button>
+  </div>
+</div>
+
+<!-- MAIN MENU -->
+<div id="screen-menu" class="absolute inset-0 flex flex-col">
+  <div class="flex-1 flex flex-col lg:flex-row">
+    <div class="flex-1 flex flex-col justify-center px-6 md:px-10 lg:px-16 py-6">
+      <div class="inline-flex items-center gap-2 bg-black text-white px-3 py-1 rounded-full text-[11px] tracking-widest font-bold w-fit">
+        <span class="w-2 h-2 bg-[#86EFAC] rounded-full animate-pulse"></span> SEASON 1 • VOXEL ARENA
+        <span class="hidden md:inline opacity-60 ml-2">4 PLAYERS • LAST STANDING WINS</span>
+      </div>
+      <h1 class="font-display leading-[0.85] mt-4">
+        <span class="block text-5xl md:text-7xl lg:text-[86px] stroke text-white" style="text-shadow:6px 6px 0 #000">VIBER</span>
+        <span class="block text-5xl md:text-7xl lg:text-[86px] text-[#86EFAC] stroke" style="text-shadow:6px 6px 0 #000">BRAWL</span>
+      </h1>
+      <div class="mt-2 bg-[#86EFAC] border-[3px] border-black px-4 py-1.5 rounded-xl inline-flex w-fit voxel-shadow">
+        <span class="font-black tracking-[0.18em] text-sm">LAST VIBER STANDING</span>
+      </div>
+      <p class="mt-4 text-black/70 max-w-[520px] text-sm md:text-[15px] leading-relaxed">Pick your Viber, launch your rivals off the floating arena. Exaggerated knockback, air-steer & dash recoveries — easy to learn, brutal to master.</p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button id="btnPlay" class="bg-[#FF7A3D] hover:bg-[#ff8f5c] border-[3px] border-black rounded-2xl px-8 py-4 font-black tracking-widest voxel-shadow flex items-center gap-3 text-black transition">
+          <span class="w-8 h-8 bg-black text-white grid place-items-center rounded-full">▶</span> PLAY NOW
+        </button>
+        <button id="btnHow" class="bg-white border-[3px] border-black rounded-2xl px-6 py-4 font-black tracking-widest voxel-shadow">HOW TO PLAY</button>
+        <button id="btnChars" class="bg-black text-white border-[3px] border-black rounded-2xl px-6 py-4 font-black tracking-widest voxel-shadow">ROSTER</button>
+      </div>
+      <div class="mt-6 flex gap-3 text-[11px] font-bold tracking-widest">
+        <span class="bg-white border-2 border-black px-3 py-1 rounded-full">⚡ 60 FPS • PHYSICS BRAWLER</span>
+        <span class="bg-[#86EFAC] border-2 border-black px-3 py-1 rounded-full">◆ VOXEL • PARTY</span>
+      </div>
+    </div>
+    <div class="flex-1 relative min-h-[340px] lg:min-h-0 flex items-center justify-center p-6">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(0,0,0,0.08),transparent_60%)]"></div>
+      <!-- Viber Card -->
+      <div class="relative w-full max-w-[520px]">
+        <div class="bg-white border-[4px] border-black rounded-[28px] voxel-shadow overflow-hidden">
+          <div class="bg-[#86EFAC] border-b-[4px] border-black px-5 py-3 flex items-center justify-between">
+            <div class="font-black tracking-widest text-sm flex items-center gap-2"><span class="w-3 h-3 bg-black rounded-full"></span> OFFICIAL VIBER</div>
+            <span class="bg-black text-white text-[10px] tracking-widest px-2 py-1 rounded-full">#001 • GENESIS</span>
+          </div>
+          <div class="bg-[#F5E6B8] p-0 flex items-center justify-center relative overflow-hidden" style="height:340px">
+            <img src="https://www.designarena.ai/u/f3b840de-ac8a-411a-8777-ac67639392a4" alt="Viber" class="w-full h-full object-contain p-6 drop-shadow-[0_12px_0_rgba(0,0,0,1)]">
+            <div class="absolute bottom-3 left-3 bg-black text-white text-[10px] tracking-widest px-3 py-1 rounded-full">BLOCKY • 1.6M VOXELS • MINT VISOR</div>
+            <div class="absolute top-3 right-3 w-10 h-10 bg-white border-2 border-black rounded-xl grid place-items-center font-black">◈</div>
+          </div>
+          <div class="p-4 grid grid-cols-3 gap-3">
+            <div class="bg-[#F5E6B8] border-2 border-black rounded-xl p-3 text-center"><div class="text-[10px] tracking-widest opacity-60">WEIGHT</div><div class="font-black">MEDIUM</div></div>
+            <div class="bg-[#86EFAC] border-2 border-black rounded-xl p-3 text-center"><div class="text-[10px] tracking-widest opacity-60">STYLE</div><div class="font-black">BALANCED</div></div>
+            <div class="bg-black text-white rounded-xl p-3 text-center"><div class="text-[10px] tracking-widest opacity-70">ABILITY</div><div class="font-black text-[#86EFAC]">SPARK</div></div>
+          </div>
+        </div>
+        <div class="absolute -bottom-4 -right-2 bg-[#FACC15] border-[3px] border-black rounded-2xl px-4 py-2 voxel-shadow rotate-[-2deg]">
+          <div class="text-[10px] tracking-widest font-black">CHOOSE YOUR VIBER →</div>
+          <div class="font-black leading-none">4 FIGHTERS READY</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="hidden md:flex bg-black text-white items-center justify-between px-6 py-2 text-[11px] tracking-widest">
+    <span>◆ VIBER BRAWL © 2026 • BUILT FOR BROWSER</span>
+    <span class="opacity-60">WASD MOVE • SPACE JUMP • LMB QUICK • RMB HEAVY • SHIFT DASH • E SPECIAL</span>
+  </div>
+</div>
+
+<!-- CHARACTER SELECT -->
+<div id="screen-chars" class="absolute inset-0 bg-[#F5E6B8] hidden overflow-auto">
+  <div class="max-w-[1100px] mx-auto p-4 md:p-8">
+    <div class="flex items-center justify-between">
+      <h2 class="font-display text-3xl md:text-5xl stroke text-white" style="text-shadow:4px 4px 0 #000">CHOOSE VIBER</h2>
+      <button id="backFromChars" class="bg-white border-2 border-black px-4 py-2 rounded-full font-black">← BACK</button>
+    </div>
+    <div id="charGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6"></div>
+    <div class="mt-6 flex gap-3">
+      <button id="startMatchBtn" class="flex-1 bg-[#FF7A3D] border-[3px] border-black rounded-2xl py-4 font-black tracking-[0.2em] voxel-shadow">FIGHT! → ARENA</button>
+      <button id="tutorialBtn" class="bg-black text-white border-[3px] border-black rounded-2xl px-6 py-4 font-bold">TUTORIAL</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOW TO PLAY -->
+<div id="screen-how" class="absolute inset-0 bg-[#0F172A]/90 glass hidden overflow-auto p-4">
+  <div class="max-w-[900px] mx-auto bg-[#FFF7E0] border-[4px] border-black rounded-[24px] voxel-shadow overflow-hidden">
+    <div class="bg-black text-white px-6 py-4 flex items-center justify-between">
+      <h3 class="font-display text-2xl tracking-widest">HOW TO PLAY</h3>
+      <button id="closeHow" class="w-10 h-10 bg-white text-black rounded-full grid place-items-center font-black">✕</button>
+    </div>
+    <div class="p-6 grid md:grid-cols-3 gap-4">
+      <div class="bg-white border-2 border-black rounded-2xl p-4"><div class="font-black">1. MOVE & RECOVER</div><p class="text-sm opacity-70 mt-1">WASD to move, Space to jump, Shift to dash. You can air-steer & double-jump. Near the edge? Dash toward center to survive!</p></div>
+      <div class="bg-[#86EFAC] border-2 border-black rounded-2xl p-4"><div class="font-black">2. ATTACK & LAUNCH</div><p class="text-sm opacity-70 mt-1">LMB = Quick (fast, low KB). RMB = Heavy (slow, huge KB). Damage % increases knockback. Launch foes off the island!</p></div>
+      <div class="bg-[#FACC15] border-2 border-black rounded-2xl p-4"><div class="font-black">3. ABILITY & POWERUPS</div><p class="text-sm opacity-70 mt-1">Press E for Viber ability. Grab floating cubes: ⚡ SPEED, 💥 POWER, 🛡 SHIELD. Last Viber standing wins.</p></div>
+    </div>
+    <div class="px-6 pb-6">
+      <div class="bg-black text-white rounded-2xl p-4 flex flex-wrap gap-2 text-xs font-bold tracking-widest">
+        <span class="bg-white text-black px-3 py-1 rounded-full">WASD MOVE</span>
+        <span class="bg-white text-black px-3 py-1 rounded-full">SPACE JUMP</span>
+        <span class="bg-[#FACC15] text-black px-3 py-1 rounded-full">LMB QUICK</span>
+        <span class="bg-[#EF4444] text-white px-3 py-1 rounded-full">RMB HEAVY</span>
+        <span class="bg-[#86EFAC] text-black px-3 py-1 rounded-full">SHIFT DASH</span>
+        <span class="bg-[#60A5FA] text-black px-3 py-1 rounded-full">E SPECIAL</span>
+        <span class="ml-auto opacity-70">MOUSE DRAG = ROTATE CAMERA</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TUTORIAL OVERLAY -->
+<div id="tutorial" class="absolute inset-0 hidden">
+  <div class="absolute bottom-[88px] left-1/2 -translate-x-1/2 bg-black text-white border-2 border-white rounded-2xl px-5 py-3 flex items-center gap-4 voxel-shadow">
+    <div id="tutText" class="text-sm font-bold">Use WASD to move! Try to reach the center.</div>
+    <button id="tutNext" class="bg-[#86EFAC] text-black px-4 py-1.5 rounded-full font-black text-xs">NEXT →</button>
+    <button id="tutSkip" class="opacity-60 text-xs">SKIP</button>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="screen-over" class="absolute inset-0 bg-[#0F172A]/80 glass hidden grid place-items-center p-4">
+  <div class="w-full max-w-[560px] bg-[#FFF7E0] border-[4px] border-black rounded-[28px] voxel-shadow overflow-hidden">
+    <div class="bg-black text-white text-center py-6">
+      <div id="overTitle" class="font-display text-4xl">VICTORY!</div>
+      <div id="overSub" class="tracking-[0.3em] text-xs opacity-70 mt-1">LAST VIBER STANDING</div>
+    </div>
+    <div id="overStats" class="p-5 grid grid-cols-3 gap-3"></div>
+    <div class="p-5 pt-0 flex gap-3">
+      <button id="btnRematch" class="flex-1 bg-[#FF7A3D] border-[3px] border-black rounded-2xl py-3 font-black">REMATCH</button>
+      <button id="btnMenu" class="flex-1 bg-white border-[3px] border-black rounded-2xl py-3 font-black">MENU</button>
+    </div>
+  </div>
+</div>
+
+<div id="crosshair" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none hidden">
+  <div class="absolute left-1/2 top-0 w-0.5 h-2 bg-black -translate-x-1/2"></div>
+  <div class="absolute left-1/2 bottom-0 w-0.5 h-2 bg-black -translate-x-1/2"></div>
+  <div class="absolute top-1/2 left-0 w-2 h-0.5 bg-black -translate-y-1/2"></div>
+  <div class="absolute top-1/2 right-0 w-2 h-0.5 bg-black -translate-y-1/2"></div>
+</div>
+
+<div id="mobileStick" class="absolute left-3 bottom-3 w-28 h-28 rounded-full bg-black/10 border-2 border-black/20 hidden md:hidden touch-none">
+  <div id="stickDot" class="absolute left-1/2 top-1/2 w-10 h-10 bg-black rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const hud = document.getElementById('hud');
+const bottomHud = document.getElementById('bottomHud');
+const timerEl = document.getElementById('timer');
+const aliveEl = document.getElementById('aliveCount');
+const hudCards = document.getElementById('hud-cards');
+const koFeed = document.getElementById('koFeed');
+
+// Audio
+let audioCtx;
+function ensureAudio(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }
+function beep(f=440,d=0.12,t='square',v=0.2){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=t; o.frequency.value=f; o.connect(g); g.connect(audioCtx.destination);
+  g.gain.value=v; o.start(); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+d); o.stop(audioCtx.currentTime+d);
+}
+function sfx(name){
+  ensureAudio();
+  if(name==='jump') beep(520,0.12,'square',0.15);
+  else if(name==='dash') {beep(300,0.08,'sawtooth',0.18); setTimeout(()=>beep(600,0.08,'square',0.12),60);}
+  else if(name==='quick'){beep(180,0.08,'square',0.2); beep(90,0.06,'triangle',0.15);}
+  else if(name==='heavy'){beep(120,0.2,'sawtooth',0.25); setTimeout(()=>beep(60,0.12,'square',0.2),80);}
+  else if(name==='hit'){beep(220,0.12,'square',0.22); beep(440,0.06,'square',0.12);}
+  else if(name==='ko'){beep(800,0.15,'square',0.2); setTimeout(()=>beep(200,0.4,'sawtooth',0.22),120);}
+  else if(name==='power'){beep(600,0.12,'sine',0.2); setTimeout(()=>beep(900,0.12,'sine',0.2),100);}
+}
+
+// Renderer / Scene
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#F5E6B8');
+scene.fog = new THREE.Fog('#F5E6B8', 30, 70);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.1, 200);
+let camYaw= -0.6, camPitch=0.55, camDist=11;
+let camShake=0;
+
+const ambient = new THREE.HemisphereLight(0xffffff, 0xE8D9B0, 1.0);
+scene.add(ambient);
+const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+dir.position.set(8,18,6);
+dir.castShadow=true;
+dir.shadow.mapSize.set(2048,2048);
+dir.shadow.camera.near=0.5; dir.shadow.camera.far=60;
+dir.shadow.camera.left=-20; dir.shadow.camera.right=20; dir.shadow.camera.top=20; dir.shadow.camera.bottom=-20;
+scene.add(dir);
+const fill = new THREE.DirectionalLight(0x86EFAC, 0.35);
+fill.position.set(-8,10,-10);
+scene.add(fill);
+
+// Arena
+const platforms=[];
+function addPlatform(x,y,z,sx,sy,sz,color='#E8E6DC'){
+  const geo = new THREE.BoxGeometry(sx,sy,sz);
+  const mat = new THREE.MeshStandardMaterial({color, roughness:0.85, metalness:0.02});
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z);
+  m.receiveShadow=true; m.castShadow=true;
+  scene.add(m);
+  // outline
+  const edges = new THREE.EdgesGeometry(geo);
+  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x000000}));
+  line.position.copy(m.position);
+  scene.add(line);
+  // top grass
+  const topGeo = new THREE.BoxGeometry(sx+0.3,0.25,sz+0.3);
+  const topMat = new THREE.MeshStandardMaterial({color:'#86EFAC'});
+  const top = new THREE.Mesh(topGeo, topMat);
+  top.position.set(x,y+sy/2+0.12,z);
+  top.receiveShadow=true;
+  scene.add(top);
+  const e2 = new THREE.EdgesGeometry(topGeo);
+  const l2 = new THREE.LineSegments(e2, new THREE.LineBasicMaterial({color:0x000000}));
+  l2.position.copy(top.position);
+  scene.add(l2);
+  platforms.push({x,y: y+sy/2, z, sx, sz, yTop: y+sy/2+0.25, mesh:m});
+}
+
+// central + 4 small + 2 extra
+addPlatform(0,-0.5,0, 18,1.2,18,'#D8D5CB');
+addPlatform(11,0.2,0, 6.5,0.9,6.5,'#EDE9DE');
+addPlatform(-11,0.2,0, 6.5,0.9,6.5,'#EDE9DE');
+addPlatform(0,0.2,11, 6.5,0.9,6.5,'#EDE9DE');
+addPlatform(0,0.2,-11, 6.5,0.9,6.5,'#EDE9DE');
+addPlatform(7,1.8,7, 4.5,0.7,4.5,'#FFF7E0');
+addPlatform(-7,1.8,-7, 4.5,0.7,4.5,'#FFF7E0');
+
+// void decoration - floating rocks
+for(let i=0;i<10;i++){
+  const s = 1+Math.random()*1.5;
+  const g=new THREE.BoxGeometry(s,s*0.6,s);
+  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:'#CFC8B0'}));
+  const a=Math.random()*Math.PI*2, r=14+Math.random()*10;
+  m.position.set(Math.cos(a)*r, -3-Math.random()*4, Math.sin(a)*r);
+  m.rotation.set(Math.random(),Math.random(),Math.random());
+  scene.add(m);
+}
+
+// hazards: lava ring around central? simplified visual
+const ringGeo = new THREE.RingGeometry(11,13,32);
+const ringMat = new THREE.MeshBasicMaterial({color:0xFF7A3D, side:THREE.DoubleSide, transparent:true, opacity:0.0});
+const ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x=-Math.PI/2; ring.position.y=-0.45;
+scene.add(ring);
+
+// Viber definitions
+const VIBERS=[
+  {id:'yellow', name:'YELLOW VIBER', role:'BALANCED', color:'#FACC15', helmet:'#E5E7EB', body:'#FACC15', ability:'SPARK DASH', desc:'Medium speed & health. Spark dash electrifies foes.', stats:{hp:100, speed:5.2, jump:8.2}},
+  {id:'blue', name:'BLUE MINER', role:'HEAVY', color:'#60A5FA', helmet:'#93C5FD', body:'#94A3B8', ability:'MINER SMASH', desc:'High health, slow. Ground pound shocks arena.', stats:{hp:130, speed:4.3, jump:7.4}},
+  {id:'pink', name:'PINK ANTENNA', role:'SPEED', color:'#F472B6', helmet:'#F9A8D4', body:'#FECDD3', ability:'FLASH DASH', desc:'Very fast. Triple flash dash with afterimages.', stats:{hp:85, speed:6.4, jump:8.8}},
+  {id:'cyan', name:'CYAN GHOST', role:'TRICKSTER', color:'#22D3EE', helmet:'#A5F3FC', body:'#CFFAFE', ability:'PHASE', desc:'Ghost walk — invisible & untouchable for 1.6s.', stats:{hp:90, speed:5.9, jump:9.2}},
+];
+
+// create voxel viber model
+function createViberModel(cfg){
+  const g=new THREE.Group();
+  const outlineMat = new THREE.LineBasicMaterial({color:0x000000});
+  function box(w,h,d, color, x,y,z, parent=g){
+    const geo=new THREE.BoxGeometry(w,h,d);
+    const mat=new THREE.MeshStandardMaterial({color, roughness:0.9});
+    if(cfg.id==='cyan' && (color===cfg.helmet || color===cfg.body)) {mat.transparent=true; mat.opacity=0.92;}
+    const m=new THREE.Mesh(geo, mat);
+    m.position.set(x,y,z);
+    m.castShadow=true; m.receiveShadow=true;
+    parent.add(m);
+    const e=new THREE.EdgesGeometry(geo);
+    const l=new THREE.LineSegments(e, outlineMat);
+    l.position.copy(m.position);
+    parent.add(l);
+    return m;
+  }
+  // feet
+  box(0.7,0.35,0.9, '#E7E5E4', -0.45,0.22,0.05);
+  box(0.7,0.35,0.9, '#E7E5E4', 0.45,0.22,0.05);
+  // legs (gray)
+  box(0.55,0.6,0.55, '#9CA3AF', -0.4,0.68,0);
+  box(0.55,0.6,0.55, '#9CA3AF', 0.4,0.68,0);
+  // body
+  box(1.0,0.9,0.65, cfg.body, 0,1.18,0);
+  // belt (brown)
+  box(1.15,0.22,0.72, '#6B5A46', 0,1.1,0.04);
+  // little belt bits
+  box(0.18,0.18,0.18, '#5C4A36', -0.32,0.85,0.35);
+  box(0.18,0.18,0.18, '#5C4A36', 0.32,0.85,0.35);
+  // arms (brown)
+  const armL = new THREE.Group(); armL.position.set(-0.78,1.18,0);
+  box(0.52,0.75,0.52, '#6B5A46', 0,0,0, armL);
+  g.add(armL);
+  const armR = new THREE.Group(); armR.position.set(0.78,1.18,0);
+  box(0.52,0.75,0.52, '#6B5A46', 0,0,0, armR);
+  g.add(armR);
+  g.userData.arms=[armL,armR];
+  // head big cube
+  const headY=2.15;
+  box(1.55,1.15,1.35, cfg.helmet, 0,headY,0);
+  // visor black backing
+  box(1.35,0.45,0.08, '#0F172A', 0,headY-0.05,0.72);
+  // visor mint strip top
+  box(1.30,0.18,0.12, '#86EFAC', 0,headY+0.05,0.74);
+  // orange eyes
+  box(0.22,0.22,0.10, '#FB923C', -0.45,headY-0.08,0.78);
+  box(0.22,0.22,0.10, '#FB923C', 0.45,headY-0.18,0.78);
+  // nose mint protruding
+  box(0.42,0.22,0.28, '#86EFAC', 0,headY-0.02,0.86);
+  // antenna for pink
+  if(cfg.id==='pink'){
+    const antGeo=new THREE.CylinderGeometry(0.04,0.04,0.5,6);
+    const antMat=new THREE.MeshStandardMaterial({color:'#F472B6'});
+    const ant=new THREE.Mesh(antGeo, antMat);
+    ant.position.set(0, headY+0.75, -0.15);
+    g.add(ant);
+    const tipGeo=new THREE.SphereGeometry(0.12,8,8);
+    const tip=new THREE.Mesh(tipGeo, new THREE.MeshStandardMaterial({color:'#F472B6'}));
+    tip.position.set(0, headY+1.02, -0.15);
+    g.add(tip);
+  }
+  if(cfg.id==='blue'){
+    // tiny pickaxe on back
+    const h=new THREE.BoxGeometry(0.08,0.6,0.08);
+    const hm=new THREE.Mesh(h,new THREE.MeshStandardMaterial({color:'#5C4A36'}));
+    hm.position.set(0.55,1.0,-0.45); hm.rotation.z=0.3; g.add(hm);
+    const headPick=new THREE.BoxGeometry(0.45,0.12,0.12);
+    const hp=new THREE.Mesh(headPick,new THREE.MeshStandardMaterial({color:'#93C5FD'}));
+    hp.position.set(0.55,1.27,-0.45); g.add(hp);
+  }
+  // slight scale to match image proportions
+  g.scale.set(1,1,1);
+  // shadow plane
+  const sh=new THREE.Mesh(new THREE.CircleGeometry(0.7,16), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.18}));
+  sh.rotation.x=-Math.PI/2; sh.position.y=0.01;
+  g.add(sh); g.userData.shadow=sh;
+  return g;
+}
+
+// Fighters
+class Fighter{
+  constructor(cfg, isPlayer, spawn){
+    this.cfg=cfg; this.isPlayer=isPlayer;
+    this.spawn=spawn.clone();
+    this.pos=spawn.clone();
+    this.vel=new THREE.Vector3();
+    this.yaw=Math.random()*Math.PI*2;
+    this.alive=true; this.damage=0;
+    this.stocks=1; // last standing
+    this.grounded=false; this.jumps=0;
+    this.maxJumps=2;
+    this.attackCd=0; this.heavyCd=0; this.dashCd=0; this.specialCd=0;
+    this.dashCharges=2; this.dashRegen=0;
+    this.powerTimer=0; this.shieldTimer=0; this.speedTimer=0;
+    this.hitStun=0; this.invuln=0;
+    this.lastAttacker=null;
+    this.aiType = ['AGGRESSIVE','DEFENSIVE','OPPORTUNISTIC'][Math.floor(Math.random()*3)];
+    this.aiTimer=0;
+    this.kos=0; this.falls=0; this.dmgDealt=0; this.dmgTaken=0;
+    this.mesh=createViberModel(cfg);
+    this.mesh.position.copy(this.pos);
+    scene.add(this.mesh);
+    this.phaseTimer=0;
+  }
+  reset(){
+    this.pos.copy(this.spawn); this.vel.set(0,0,0); this.damage=0; this.alive=true; this.grounded=false; this.attackCd=0; this.heavyCd=0; this.specialCd=0; this.powerTimer=0; this.shieldTimer=0; this.speedTimer=0; this.hitStun=0; this.invuln=0; this.phaseTimer=0; this.mesh.visible=true; this.mesh.traverse(o=>{if(o.material) o.material.opacity=1});
+  }
+}
+
+let fighters=[];
+let player=null;
+let selectedId='yellow';
+let gameState='menu'; // menu, playing, over
+let matchTime=90;
+let powerups=[];
+let particles=[];
+
+// spawn points
+const spawns=[new THREE.Vector3(0,2,0), new THREE.Vector3(8,2,6), new THREE.Vector3(-8,2,-6), new THREE.Vector3(6,2,-8)];
+
+function initFighters(){
+  fighters.forEach(f=>scene.remove(f.mesh));
+  fighters=[];
+  const order=[selectedId, ...VIBERS.filter(v=>v.id!==selectedId).map(v=>v.id).slice(0,3)];
+  // ensure 4 distinct
+  const ids=[selectedId];
+  for(const v of VIBERS){ if(!ids.includes(v.id)) ids.push(v.id); if(ids.length===4) break;}
+  ids.forEach((id,i)=>{
+    const cfg=VIBERS.find(v=>v.id===id);
+    const isPlayer = i===0;
+    const f=new Fighter(cfg,isPlayer, spawns[i]);
+    // assign AI types explicitly for variety
+    if(!isPlayer){
+      f.aiType = ['AGGRESSIVE','DEFENSIVE','OPPORTUNISTIC'][i-1];
+    }
+    fighters.push(f);
+    if(isPlayer) player=f;
+  });
+  powerups.forEach(p=>scene.remove(p.mesh)); powerups=[];
+}
+
+// Input
+const keys={};
+let mouseDownL=false, mouseDownR=false;
+let dashKey=false;
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys[k]=true;
+  if(k===' ') {e.preventDefault(); if(player && gameState==='playing') doJump(player);}
+  if(k==='shift') dashKey=true;
+  if(k==='e' && gameState==='playing') doSpecial(player);
+  if(k==='r' && gameState==='playing') { /* respawn test */ }
+});
+window.addEventListener('keyup',e=>{
+  keys[e.key.toLowerCase()]=false;
+  if(e.key==='Shift') dashKey=false;
+});
+canvas.addEventListener('mousedown',e=>{
+  if(gameState!=='playing') return;
+  ensureAudio();
+  if(e.button===0){ mouseDownL=true; doAttack(player,'quick');}
+  if(e.button===2){ mouseDownR=true; doAttack(player,'heavy');}
+});
+canvas.addEventListener('mouseup',e=>{
+  if(e.button===0) mouseDownL=false;
+  if(e.button===2) mouseDownR=false;
+});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+let isDragging=false, lastX=0, lastY=0;
+canvas.addEventListener('pointerdown',e=>{
+  isDragging=true; lastX=e.clientX; lastY=e.clientY;
+  if(gameState==='playing') canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!isDragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if(e.buttons===1 || e.buttons===2 || gameState==='playing'){
+    camYaw -= dx*0.0045;
+    camPitch = Math.max(0.15, Math.min(1.25, camPitch + dy*0.004));
+  }
+});
+canvas.addEventListener('pointerup',()=>isDragging=false);
+canvas.addEventListener('wheel',e=>{
+  camDist = Math.max(5, Math.min(16, camDist + e.deltaY*0.015));
+});
+window.addEventListener('resize',()=>{
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+});
+renderer.setSize(innerWidth, innerHeight);
+
+// Mobile joystick
+let joyVec={x:0,y:0}, joyActive=false;
+const stick=document.getElementById('mobileStick'), dot=document.getElementById('stickDot');
+function isTouchDevice(){return 'ontouchstart' in window || navigator.maxTouchPoints>0}
+if(isTouchDevice()) stick.classList.remove('hidden');
+stick.addEventListener('touchstart',e=>{joyActive=true; e.preventDefault();},{passive:false});
+stick.addEventListener('touchmove',e=>{
+  if(!joyActive) return;
+  const rect=stick.getBoundingClientRect();
+  const t=e.touches[0];
+  let x=(t.clientX - rect.left - rect.width/2)/(rect.width/2);
+  let y=(t.clientY - rect.top - rect.height/2)/(rect.height/2);
+  const len=Math.hypot(x,y);
+  if(len>1){x/=len;y/=len;}
+  joyVec.x=x; joyVec.y=y;
+  dot.style.transform=`translate(calc(-50% + ${x*32}px), calc(-50% + ${y*32}px))`;
+  e.preventDefault();
+},{passive:false});
+stick.addEventListener('touchend',()=>{
+  joyActive=false; joyVec.x=0; joyVec.y=0; dot.style.transform='translate(-50%,-50%)';
+});
+document.getElementById('mDash').addEventListener('click',()=>{ if(player) doDash(player);});
+document.getElementById('mSpecial').addEventListener('click',()=>{ if(player) doSpecial(player);});
+document.getElementById('mDash').addEventListener('touchstart',e=>{e.preventDefault(); if(player) doDash(player);});
+document.getElementById('mSpecial').addEventListener('touchstart',e=>{e.preventDefault(); if(player) doSpecial(player);});
+
+// Character grid rendering
+const charGrid=document.getElementById('charGrid');
+function renderCharGrid(){
+  charGrid.innerHTML='';
+  VIBERS.forEach(v=>{
+    const sel=selectedId===v.id;
+    const el=document.createElement('button');
+    el.className=`text-left bg-white border-[3px] rounded-[22px] overflow-hidden voxel-shadow transition ${sel?'border-black scale-[1.02]':'border-black/15'}`;
+    el.innerHTML=`
+      <div class="h-44 bg-[#F5E6B8] relative grid place-items-center p-3">
+        <div class="absolute top-3 left-3 bg-black text-white text-[10px] tracking-widest px-2 py-1 rounded-full">${v.role}</div>
+        <div class="absolute top-3 right-3 w-7 h-7 rounded-full border-2 border-black grid place-items-center text-xs ${sel?'bg-[#86EFAC]':'bg-white'}">${sel?'✓':'+'}</div>
+        <div class="w-28 h-28 relative">
+          <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_60%,rgba(0,0,0,0.12),transparent_70%)]"></div>
+          <div class="w-full h-full flex items-center justify-center text-5xl">${v.id==='yellow'?'🟨':v.id==='blue'?'🟦':v.id==='pink'?'💗':'👻'}</div>
+        </div>
+        <div class="absolute bottom-2 inset-x-3 flex gap-1">
+          <span class="flex-1 h-1.5 rounded-full bg-black"></span><span class="flex-1 h-1.5 rounded-full ${v.stats.speed>5.5?'bg-black':'bg-black/20'}"></span><span class="flex-1 h-1.5 rounded-full ${v.stats.hp>100?'bg-black':'bg-black/20'}"></span>
+        </div>
+      </div>
+      <div class="p-4">
+        <div class="font-black tracking-wide text-sm">${v.name}</div>
+        <div class="text-[11px] tracking-widest opacity-60">${v.ability}</div>
+        <p class="text-xs opacity-70 mt-1 leading-snug">${v.desc}</p>
+        <div class="mt-3 flex gap-2 text-[10px] font-black">
+          <span class="bg-[#F5E6B8] border border-black px-2 py-1 rounded-full">SPD ${v.stats.speed}</span>
+          <span class="bg-[#86EFAC] border border-black px-2 py-1 rounded-full">HP ${v.stats.hp}</span>
+        </div>
+      </div>
+    `;
+    el.onclick=()=>{
+      selectedId=v.id;
+      renderCharGrid();
+      document.getElementById('abilityName').textContent=v.ability;
+    };
+    charGrid.appendChild(el);
+  });
+}
+renderCharGrid();
+
+// UI navigation
+const scrMenu=document.getElementById('screen-menu');
+const scrChars=document.getElementById('screen-chars');
+const scrHow=document.getElementById('screen-how');
+document.getElementById('btnPlay').onclick=()=>{
+  scrChars.classList.remove('hidden');
+  scrMenu.classList.add('hidden');
+  renderCharGrid();
+};
+document.getElementById('btnChars').onclick=()=>{scrChars.classList.remove('hidden'); scrMenu.classList.add('hidden');};
+document.getElementById('btnHow').onclick=()=>scrHow.classList.remove('hidden');
+document.getElementById('closeHow').onclick=()=>scrHow.classList.add('hidden');
+document.getElementById('backFromChars').onclick=()=>{scrChars.classList.add('hidden'); scrMenu.classList.remove('hidden');};
+document.getElementById('tutorialBtn').onclick=()=>startMatch(true);
+document.getElementById('startMatchBtn').onclick=()=>startMatch(false);
+document.getElementById('btnRematch').onclick=()=>startMatch(false);
+document.getElementById('btnMenu').onclick=()=>showMenu();
+
+function showMenu(){
+  gameState='menu';
+  document.getElementById('screen-over').classList.add('hidden');
+  hud.classList.add('hidden'); bottomHud.classList.add('hidden');
+  document.getElementById('crosshair').classList.add('hidden');
+  scrMenu.classList.remove('hidden');
+  scrChars.classList.add('hidden');
+}
+
+let tutorialStep=0, inTutorial=false;
+function startMatch(tutorial=false){
+  ensureAudio();
+  initFighters();
+  scrMenu.classList.add('hidden');
+  scrChars.classList.add('hidden');
+  scrHow.classList.add('hidden');
+  document.getElementById('screen-over').classList.add('hidden');
+  hud.classList.remove('hidden'); bottomHud.classList.remove('hidden');
+  document.getElementById('crosshair').classList.remove('hidden');
+  gameState='playing';
+  matchTime=90;
+  inTutorial=tutorial;
+  tutorialStep=0;
+  if(inTutorial){
+    document.getElementById('tutorial').classList.remove('hidden');
+    updateTutorial();
+  } else {
+    document.getElementById('tutorial').classList.add('hidden');
+  }
+  // reset camera
+  camYaw=-0.6; camPitch=0.55; camDist=11;
+  // announce
+  pushKO('FIGHT!', '#86EFAC');
+}
+function updateTutorial(){
+  const texts=[
+    'Use WASD or left stick to move! Drag mouse to rotate camera.',
+    'Press SPACE to jump — you have double jump! Try jumping now.',
+    'Press SHIFT to DASH — use it to recover when launched!',
+    'Left Click = QUICK attack • Right Click = HEAVY attack. Try hitting a dummy!',
+    'Press E for your SPECIAL ability! Then launch opponents off the arena!'
+  ];
+  document.getElementById('tutText').textContent=texts[tutorialStep]||'Good luck — be the Last Viber Standing!';
+}
+document.getElementById('tutNext').onclick=()=>{
+  tutorialStep++;
+  if(tutorialStep>=5){ document.getElementById('tutorial').classList.add('hidden'); inTutorial=false; }
+  else updateTutorial();
+};
+document.getElementById('tutSkip').onclick=()=>{document.getElementById('tutorial').classList.add('hidden'); inTutorial=false;};
+
+// Combat functions
+function doJump(f){
+  if(!f.alive) return;
+  if(f.grounded || f.jumps < f.maxJumps){
+    f.vel.y = f.cfg.stats.jump;
+    f.grounded=false;
+    f.jumps++;
+    sfx('jump');
+    spawnParticles(f.pos.clone().add(new THREE.Vector3(0,0.2,0)), 6, '#86EFAC');
+  }
+}
+function doDash(f, dirOverride){
+  if(!f.alive || f.dashCharges<=0 || f.dashCd>0) return;
+  let dir;
+  if(dirOverride) dir=dirOverride;
+  else {
+    // input direction
+    const input = getInputDir(f);
+    if(input.length() <0.1){
+      // forward
+      dir=new THREE.Vector3(Math.sin(f.yaw),0,Math.cos(f.yaw));
+    } else dir=input;
+  }
+  dir.y=0.08;
+  dir.normalize();
+  const speed = f.cfg.id==='pink' ? 16 : 13;
+  f.vel.x = dir.x*speed;
+  f.vel.z = dir.z*speed;
+  f.vel.y = Math.max(f.vel.y, 3.5);
+  f.dashCharges--; f.dashCd=0.65; f.invuln=0.18;
+  sfx('dash');
+  // trail
+  for(let i=0;i<5;i++) setTimeout(()=>spawnTrail(f), i*30);
+}
+function doAttack(f, type){
+  if(!f.alive || f.hitStun>0) return;
+  if(type==='quick' && f.attackCd>0) return;
+  if(type==='heavy' && f.heavyCd>0) return;
+  const range = type==='quick'? 2.4 : 3.2;
+  const angle = type==='quick'? 0.9 : 1.4; // rad
+  const dmg = type==='quick'? 8 : 16;
+  const baseKB = type==='quick'? 6.5 : 12.5;
+  if(type==='quick') f.attackCd=0.34; else f.heavyCd=0.72;
+  // animation punch
+  punchAnim(f, type);
+  sfx(type);
+  // check hits
+  const fwd = new THREE.Vector3(Math.sin(f.yaw),0,Math.cos(f.yaw));
+  let hitCount=0;
+  fighters.forEach(v=>{
+    if(v===f || !v.alive) return;
+    const to = v.pos.clone().sub(f.pos);
+    const dist = to.length();
+    if(dist>range+1.2) return;
+    to.y=0; const horizDist = to.length();
+    if(horizDist>range) return;
+    const dirNorm = to.normalize();
+    const dot = fwd.dot(dirNorm);
+    if(dot < Math.cos(angle)) return;
+    if(Math.abs(v.pos.y - f.pos.y) > 1.6) return;
+    if(v.invuln>0) return;
+    // hit!
+    hitCount++;
+    const effDmg = v.shieldTimer>0? dmg*0.5 : dmg * (f.powerTimer>0?1.5:1);
+    v.damage += effDmg;
+    v.dmgTaken+=effDmg; f.dmgDealt+=effDmg;
+    v.lastAttacker=f;
+    const kb = baseKB + v.damage*0.14 + (type==='heavy'? v.damage*0.06:0);
+    const kbDir = v.pos.clone().sub(f.pos); kbDir.y=0; kbDir.normalize();
+    kbDir.y=0.38;
+    kbDir.normalize();
+    v.vel.x = kbDir.x*kb;
+    v.vel.z = kbDir.z*kb;
+    v.vel.y = 4.5 + v.damage*0.04 + (type==='heavy'?3:0);
+    v.hitStun = type==='heavy'?0.22:0.12;
+    v.invuln=0.08;
+    camShake = type==='heavy'?0.45:0.22;
+    spawnParticles(v.pos.clone().add(new THREE.Vector3(0,1,0)), type==='heavy'?14:8, type==='heavy'?'#EF4444':'#FACC15');
+    // hitstop
+    hitStop(60);
+    sfx('hit');
+  });
+  if(hitCount===0){
+    // whiff puff
+    const p = f.pos.clone().add(fwd.multiplyScalar(1.3)).add(new THREE.Vector3(0,1,0));
+    spawnParticles(p, 3, '#FFFFFF');
+  }
+}
+function punchAnim(f,type){
+  const arms=f.mesh.userData.arms;
+  if(!arms) return;
+  const dur= type==='quick'?180:320;
+  arms.forEach(a=>{
+    const orig = a.position.z;
+    a.position.z += type==='quick'?0.45:0.7;
+    setTimeout(()=>a.position.z=orig, dur);
+  });
+  // squash
+  const s=f.mesh.scale;
+  f.mesh.scale.set(1.15,0.9,1.15);
+  setTimeout(()=>f.mesh.scale.set(1,1,1), 120);
+}
+let hitStopTimer=0;
+function hitStop(ms){
+  hitStopTimer = ms/1000;
+}
+function doSpecial(f){
+  if(!f.alive || f.specialCd>0) return;
+  f.specialCd=6;
+  ensureAudio();
+  if(f.cfg.id==='yellow'){
+    // Spark dash electrified lunge
+    const fwd=new THREE.Vector3(Math.sin(f.yaw),0,Math.cos(f.yaw));
+    f.vel.x=fwd.x*18; f.vel.z=fwd.z*18; f.vel.y=5;
+    f.powerTimer=0.6; // brief power
+    spawnParticles(f.pos.clone(), 18, '#FACC15');
+    // damage nearby
+    fighters.forEach(v=>{
+      if(v===f||!v.alive) return;
+      if(v.pos.distanceTo(f.pos) < 3.5){
+        v.damage+=12; v.vel.x+=fwd.x*9; v.vel.z+=fwd.z*9; v.vel.y+=6; v.hitStun=0.25;
+        spawnParticles(v.pos.clone().add(new THREE.Vector3(0,1,0)),10,'#FACC15');
+      }
+    });
+    beep(700,0.15,'square',0.2); setTimeout(()=>beep(1000,0.15,'square',0.2),120);
+  } else if(f.cfg.id==='blue'){
+    // Miner smash AoE if grounded else leap
+    if(f.grounded){
+      spawnParticles(f.pos.clone(), 24, '#60A5FA');
+      camShake=0.7;
+      fighters.forEach(v=>{
+        if(v===f||!v.alive) return;
+        const d=v.pos.distanceTo(f.pos);
+        if(d<5.5){
+          const dir=v.pos.clone().sub(f.pos); dir.y=0; dir.normalize();
+          const kb=14 + v.damage*0.16;
+          v.vel.x=dir.x*kb; v.vel.z=dir.z*kb; v.vel.y=8 + v.damage*0.05;
+          v.damage+=16; v.hitStun=0.32;
+        }
+      });
+      beep(120,0.3,'sawtooth',0.3);
+    } else {
+      f.vel.y=9; // jump then smash will be next
+    }
+  } else if(f.cfg.id==='pink'){
+    // Flash dash triple
+    let count=0;
+    const interval=setInterval(()=>{
+      const fwd=new THREE.Vector3(Math.sin(f.yaw+ (Math.random()-0.5)*0.2),0,Math.cos(f.yaw));
+      f.vel.x=fwd.x*17; f.vel.z=fwd.z*17; f.invuln=0.25;
+      spawnTrail(f);
+      count++; if(count>=3) clearInterval(interval);
+    },110);
+    beep(900,0.08,'square',0.18); setTimeout(()=>beep(1100,0.08,'square',0.18),100); setTimeout(()=>beep(1300,0.08,'square',0.18),200);
+  } else if(f.cfg.id==='cyan'){
+    // Phase
+    f.phaseTimer=1.6; f.invuln=1.6; f.speedTimer=1.6;
+    f.mesh.traverse(o=>{if(o.material && o.material.color) o.material.opacity=0.35; o.material.transparent=true;});
+    spawnParticles(f.pos.clone().add(new THREE.Vector3(0,1,0)),16,'#22D3EE');
+    beep(500,0.2,'sine',0.2); setTimeout(()=>beep(800,0.3,'sine',0.2),150);
+    setTimeout(()=>{
+      f.mesh.traverse(o=>{if(o.material) {o.material.opacity=1;}});
+      f.phaseTimer=0;
+    },1600);
+  }
+}
+
+// Helpers
+function getInputDir(f){
+  if(!f.isPlayer) return new THREE.Vector3();
+  let x=0,z=0;
+  // keyboard
+  if(keys['w']) z-=1;
+  if(keys['s']) z+=1;
+  if(keys['a']) x-=1;
+  if(keys['d']) x+=1;
+  // joystick overrides/adds
+  if(joyVec.x!==0 || joyVec.y!==0){ x+=joyVec.x; z+=joyVec.y; }
+  const v=new THREE.Vector3(x,0,z);
+  if(v.length()>0){
+    v.normalize();
+    // rotate by camera yaw
+    const cos=Math.cos(camYaw), sin=Math.sin(camYaw);
+    const rx = v.x*cos - v.z*sin;
+    const rz = v.x*sin + v.z*cos;
+    return new THREE.Vector3(rx,0,rz);
+  }
+  return v;
+}
+
+// Powerups
+const POWER_TYPES=[
+  {id:'speed', color:'#86EFAC', emoji:'⚡', label:'SPARK BOOST'},
+  {id:'power', color:'#EF4444', emoji:'💥', label:'POWER'},
+  {id:'shield', color:'#60A5FA', emoji:'🛡', label:'SHIELD'},
+  {id:'dash', color:'#FACC15', emoji:'💨', label:'DASH'},
+];
+let powerSpawnTimer=3;
+function spawnPowerup(){
+  const t=POWER_TYPES[Math.floor(Math.random()*POWER_TYPES.length)];
+  const plat = platforms[Math.floor(Math.random()*platforms.length)];
+  const x=plat.x + (Math.random()-0.5)* (plat.sx-1);
+  const z=plat.z + (Math.random()-0.5)* (plat.sz-1);
+  const y=plat.yTop+1.2;
+  const geo=new THREE.BoxGeometry(0.75,0.75,0.75);
+  const mat=new THREE.MeshStandardMaterial({color:t.color, emissive:t.color, emissiveIntensity:0.25});
+  const m=new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z);
+  m.castShadow=true;
+  scene.add(m);
+  const edges=new THREE.EdgesGeometry(geo);
+  const line=new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x000000}));
+  line.position.copy(m.position);
+  scene.add(line);
+  // floating label sprite via canvas? simple
+  powerups.push({mesh:m, line, type:t, pos:m.position, rot:0, bob:Math.random()*Math.PI*2, taken:false});
+}
+function collectPowerup(f, p){
+  p.taken=true; scene.remove(p.mesh); scene.remove(p.line);
+  sfx('power');
+  pushKO(`${f.cfg.name} grabbed ${p.type.label}!`, p.type.color);
+  if(p.type.id==='speed'){ f.speedTimer=6; }
+  else if(p.type.id==='power'){ f.powerTimer=6; }
+  else if(p.type.id==='shield'){ f.shieldTimer=6; }
+  else if(p.type.id==='dash'){ f.dashCharges=2; f.dashCd=0; }
+  // visual
+  spawnParticles(f.pos.clone().add(new THREE.Vector3(0,1,0)),12,p.type.color);
+}
+
+// Particles & trail
+function spawnParticles(pos,count,color){
+  for(let i=0;i<count;i++){
+    const s=0.08+Math.random()*0.12;
+    const g=new THREE.BoxGeometry(s,s,s);
+    const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color}));
+    m.position.copy(pos);
+    const vel=new THREE.Vector3((Math.random()-0.5)*8, Math.random()*7+2, (Math.random()-0.5)*8);
+    scene.add(m);
+    particles.push({mesh:m, vel, life:0.5+Math.random()*0.4, age:0});
+  }
+}
+function spawnTrail(f){
+  const g=new THREE.BoxGeometry(0.5,0.9,0.5);
+  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:f.cfg.color, transparent:true, opacity:0.35}));
+  m.position.copy(f.pos).add(new THREE.Vector3(0,1,0));
+  m.rotation.y=f.yaw;
+  scene.add(m);
+  particles.push({mesh:m, vel:new THREE.Vector3(0,0,0), life:0.28, age:0, fade:true});
+}
+
+// KO feed
+function pushKO(text,color='#000'){
+  const el=document.createElement('div');
+  el.className='bg-black text-white border-2 border-black rounded-full px-4 py-1 text-xs font-black tracking-widest flex items-center gap-2';
+  el.style.background=color;
+  el.style.color=color==='#86EFAC'||color==='#FACC15'?'#000':'#fff';
+  el.style.borderColor='#000';
+  el.textContent=text;
+  koFeed.appendChild(el);
+  setTimeout(()=>el.remove(), 2200);
+}
+
+// Physics & grounding check
+function isOverPlatform(pos, plat){
+  return Math.abs(pos.x-plat.x) < plat.sx/2 +0.25 && Math.abs(pos.z-plat.z) < plat.sz/2 +0.25;
+}
+function getGroundY(pos){
+  // find highest platform under pos
+  let best=-Infinity;
+  platforms.forEach(p=>{
+    if(isOverPlatform(pos,p)){
+      if(p.yTop > best && pos.y >= p.yTop -0.2) best=p.yTop;
+    }
+  });
+  return best;
+}
+
+// Main loop
+let lastTime=performance.now();
+let dashBuffer=0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const now=performance.now();
+  let dt=(now-lastTime)/1000;
+  lastTime=now;
+  dt=Math.min(dt,1/30);
+  if(hitStopTimer>0){ hitStopTimer-=dt; dt*=0.08; }
+  if(camShake>0) camShake*=0.88, camShake=Math.max(0,camShake- dt*2);
+
+  // Update match time
+  if(gameState==='playing'){
+    matchTime-=dt;
+    if(matchTime<0) matchTime=0;
+    timerEl.textContent=`${String(Math.floor(matchTime/60)).padStart(2,'0')}:${String(Math.floor(matchTime%60)).padStart(2,'0')}`;
+    // powerup spawn
+    powerSpawnTimer-=dt;
+    if(powerSpawnTimer<=0){ spawnPowerup(); powerSpawnTimer=6+Math.random()*4; }
+    // dash regen
+    fighters.forEach(f=>{
+      if(f.dashCharges<2){
+        f.dashRegen+=dt;
+        if(f.dashRegen>3.2){ f.dashCharges++; f.dashRegen=0; }
+      }
+    });
+    // check win condition
+    const alive = fighters.filter(f=>f.alive);
+    aliveEl.textContent=`${alive.length} ALIVE`;
+    if(alive.length<=1 || matchTime<=0){
+      endMatch();
+    }
+  }
+
+  // Update fighters
+  fighters.forEach(f=>{
+    if(!f.alive){
+      f.mesh.visible=false;
+      return;
+    }
+    // timers
+    if(f.attackCd>0) f.attackCd-=dt;
+    if(f.heavyCd>0) f.heavyCd-=dt;
+    if(f.dashCd>0) f.dashCd-=dt;
+    if(f.specialCd>0) f.specialCd-=dt;
+    if(f.powerTimer>0) f.powerTimer-=dt;
+    if(f.shieldTimer>0) f.shieldTimer-=dt;
+    if(f.speedTimer>0) f.speedTimer-=dt;
+    if(f.hitStun>0) f.hitStun-=dt;
+    if(f.invuln>0) f.invuln-=dt;
+    // powerup collision
+    powerups.forEach(p=>{
+      if(p.taken) return;
+      if(p.pos.distanceTo(f.pos.clone().add(new THREE.Vector3(0,0.8,0))) <1.1) collectPowerup(f,p);
+    });
+
+    // AI control
+    if(!f.isPlayer && gameState==='playing'){
+      updateAI(f, dt);
+    }
+    // Player control
+    if(f.isPlayer && gameState==='playing' && f.hitStun<=0){
+      const inputDir=getInputDir(f);
+      const speedBase=f.cfg.stats.speed * (f.speedTimer>0?1.45:1) * (f.phaseTimer>0?1.5:1);
+      // apply movement
+      if(inputDir.length()>0.05){
+        const accel=28;
+        f.vel.x += inputDir.x*accel*dt;
+        f.vel.z += inputDir.z*accel*dt;
+        // clamp
+        const horiz=Math.hypot(f.vel.x,f.vel.z);
+        const max=speedBase + (Math.abs(f.vel.x)>10||Math.abs(f.vel.z)>10? 12:0);
+        if(horiz>max){
+          f.vel.x = f.vel.x/horiz*max;
+          f.vel.z = f.vel.z/horiz*max;
+        }
+        // yaw towards movement
+        f.yaw = Math.atan2(inputDir.x, inputDir.z);
+      } else {
+        // friction
+        f.vel.x *= 0.88;
+        f.vel.z *= 0.88;
+        if(Math.abs(f.vel.x)<0.05) f.vel.x=0;
+        if(Math.abs(f.vel.z)<0.05) f.vel.z=0;
+      }
+      // dash input
+      if(dashKey && f.dashCd<=0 && f.dashCharges>0){
+        doDash(f, inputDir.length()>0.1?inputDir:null);
+        dashKey=false; // prevent hold spam
+      }
+      // jump handled via keydown
+      // tutorial auto check
+      if(inTutorial){
+        if(tutorialStep===0 && inputDir.length()>0.3) {tutorialStep=1; updateTutorial();}
+        if(tutorialStep===2 && f.dashCd>0) {tutorialStep=3; updateTutorial();}
+      }
+    }
+
+    // Physics integration
+    if(!f.grounded){
+      f.vel.y -= 22*dt; // gravity
+    }
+    // clamp fall speed
+    if(f.vel.y < -22) f.vel.y=-22;
+
+    const nextPos = f.pos.clone().add(f.vel.clone().multiplyScalar(dt));
+    // grounding logic: check if landing on platform
+    const groundY=getGroundY(nextPos);
+    let willGround=false;
+    if(groundY>-Infinity){
+      if(f.pos.y >= groundY+0.35 && nextPos.y <= groundY+0.55 && f.vel.y <=0){
+        // land
+        nextPos.y = groundY+0.52;
+        f.vel.y=0;
+        willGround=true;
+        if(!f.grounded){
+          spawnParticles(nextPos.clone(),4,'#FFFFFF');
+          if(inTutorial && tutorialStep===1){ tutorialStep=2; updateTutorial();}
+        }
+        f.grounded=true;
+        f.jumps=0;
+      } else if(nextPos.y <= groundY+0.55 && f.vel.y<0 && Math.abs(nextPos.y - groundY) <1){
+        nextPos.y = groundY+0.52;
+        f.vel.y=0;
+        willGround=true;
+        f.grounded=true;
+        f.jumps=0;
+      }
+    }
+    if(!willGround){
+      // check if still over any platform within threshold, else falling
+      const gy=getGroundY(f.pos);
+      if(gy===-Infinity || f.pos.y > gy+1.2){
+        f.grounded=false;
+      } else if(nextPos.y > gy+1.5){
+        f.grounded=false;
+      }
+    }
+    // wall bounds: keep inside island roughly? Allow off edge to fall
+    // but clamp extreme
+    if(Math.abs(nextPos.x)>22) nextPos.x=Math.sign(nextPos.x)*22;
+    if(Math.abs(nextPos.z)>22) nextPos.z=Math.sign(nextPos.z)*22;
+
+    f.pos.copy(nextPos);
+
+    // out of bounds death
+    if(f.pos.y < -8){
+      f.alive=false;
+      f.falls++;
+      sfx('ko');
+      spawnParticles(f.pos.clone().add(new THREE.Vector3(0,2,0)),20, f.cfg.color);
+      const killer=f.lastAttacker;
+      if(killer) { killer.kos++; pushKO(`${killer.cfg.name} KO'd ${f.cfg.name}!`, killer.cfg.color); }
+      else pushKO(`${f.cfg.name} FELL!`, '#000');
+      // screen shake
+      camShake=0.9;
+      f.mesh.visible=false;
+    }
+
+    // mesh sync
+    f.mesh.position.copy(f.pos);
+    f.mesh.rotation.y = f.yaw;
+    // bob when moving fast?
+    const horizSpeed=Math.hypot(f.vel.x,f.vel.z);
+    if(f.grounded && horizSpeed>1){
+      f.mesh.position.y += Math.sin(now*0.015*horizSpeed)*0.04;
+    }
+    // lean
+    f.mesh.rotation.z = -f.vel.x*0.03;
+    f.mesh.rotation.x = f.vel.z*0.02;
+    // shadow scale based on height
+    const gY=getGroundY(f.pos);
+    const h = gY>-Infinity? f.pos.y - gY : 5;
+    const sScale=Math.max(0, 1 - h*0.25);
+    if(f.mesh.userData.shadow){
+      f.mesh.userData.shadow.scale.set(sScale,sScale,1);
+      f.mesh.userData.shadow.material.opacity=0.18*sScale;
+      f.mesh.userData.shadow.position.y=0.015;
+      // move shadow to ground projection (approx)
+      f.mesh.userData.shadow.position.x = 0;
+      f.mesh.userData.shadow.position.z = 0;
+    }
+    // power aura
+    if(f.powerTimer>0 || f.shieldTimer>0 || f.speedTimer>0){
+      f.mesh.children.forEach(c=>{
+        if(c.isMesh && c.geometry.type==='BoxGeometry'){
+          // tint handled via particles instead
+        }
+      });
+    }
+  });
+
+  // powerups animation
+  powerups.forEach(p=>{
+    if(p.taken) return;
+    p.rot+=dt*1.8;
+    p.mesh.rotation.y=p.rot;
+    p.mesh.rotation.x=Math.sin(now*0.002+p.bob)*0.3;
+    p.line.rotation.y=p.rot;
+    p.line.rotation.x=p.mesh.rotation.x;
+    p.mesh.position.y += Math.sin(now*0.003+p.bob)*0.004;
+    p.line.position.y=p.mesh.position.y;
+  });
+  powerups = powerups.filter(p=>!p.taken);
+
+  // particles
+  particles.forEach(p=>{
+    p.age+=dt;
+    p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+    p.vel.y -= 12*dt;
+    if(p.fade) p.mesh.material.opacity = 1 - p.age/p.life;
+    else { p.mesh.material.opacity = 1; }
+    p.mesh.rotation.x+=dt*4; p.mesh.rotation.y+=dt*5;
+  });
+  particles = particles.filter(p=>{
+    if(p.age>p.life){ scene.remove(p.mesh); return false; }
+    return true;
+  });
+
+  // Camera follow player
+  if(player && gameState==='playing'){
+    const target = player.pos.clone();
+    const offset = new THREE.Vector3(Math.sin(camYaw)*camDist, camPitch*9+2, Math.cos(camYaw)*camDist);
+    const desired = target.clone().add(offset).add(new THREE.Vector3(0,2.5,0));
+    camera.position.lerp(desired, 0.09);
+    const lookAt = target.clone().add(new THREE.Vector3(0,1.1,0));
+    // shake
+    if(camShake>0){
+      lookAt.x += (Math.random()-0.5)*camShake;
+      lookAt.y += (Math.random()-0.5)*camShake;
+      camera.position.x += (Math.random()-0.5)*camShake*0.6;
+      camera.position.y += (Math.random()-0.5)*camShake*0.6;
+    }
+    camera.lookAt(lookAt);
+  } else if(gameState==='menu'){
+    const t=now*0.0002;
+    camera.position.set(Math.sin(t)*16, 9, Math.cos(t)*16);
+    camera.lookAt(0,1,0);
+  }
+
+  // HUD update
+  if(gameState==='playing'){
+    hudCards.innerHTML='';
+    fighters.forEach((f,i)=>{
+      const pct=Math.round(f.damage);
+      const isDead=!f.alive;
+      const card=document.createElement('div');
+      card.className=`relative rounded-2xl border-[3px] p-2 flex items-center gap-2 ${f.isPlayer?'border-black':'border-black/80'} ${isDead?'opacity-40 grayscale':''}`;
+      card.style.background = f.isPlayer ? '#fff' : '#111';
+      card.style.color = f.isPlayer ? '#000' : '#fff';
+      card.innerHTML=`
+        <div class="w-10 h-10 rounded-xl border-2 border-black grid place-items-center text-lg shrink-0" style="background:${f.cfg.color}">${isDead?'💀':f.cfg.id==='yellow'?'🟨':f.cfg.id==='blue'?'🟦':f.cfg.id==='pink'?'💗':'👻'}</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-[10px] tracking-widest font-black truncate">${f.isPlayer?'YOU • ':''}${f.cfg.name}</div>
+          <div class="flex items-baseline gap-1">
+            <span class="font-mono text-xl leading-none ${pct>80?'text-[#EF4444]':pct>45?'text-[#F59E0B]':'text-black'} ${!f.isPlayer?'!text-white':''}" style="${!f.isPlayer?'color:white':''}">${pct}%</span>
+            <span class="text-[10px] opacity-60">DMG</span>
+            ${f.shieldTimer>0?'<span class="ml-1 w-2 h-2 rounded-full bg-[#60A5FA] inline-block"></span>':''}
+            ${f.powerTimer>0?'<span class="ml-1 w-2 h-2 rounded-full bg-[#EF4444] inline-block"></span>':''}
+          </div>
+          <div class="h-1.5 bg-black/10 rounded-full overflow-hidden mt-1">
+            <div class="h-full" style="width:${Math.min(100,pct)}%; background:${pct>80?'#EF4444':pct>45?'#F59E0B':f.cfg.color}"></div>
+          </div>
+        </div>
+        <div class="text-center hidden md:block">
+          <div class="text-[10px] tracking-widest opacity-60">KOs</div><div class="font-black leading-none">${f.kos}</div>
+        </div>
+      `;
+      hudCards.appendChild(card);
+    });
+    // cooldowns
+    const qPct = player? Math.max(0,1- player.attackCd/0.34):0;
+    const hPct = player? Math.max(0,1- player.heavyCd/0.72):0;
+    const ePct = player? Math.max(0,1- player.specialCd/6):1;
+    document.querySelector('#cdQ div').style.height=(qPct*100)+'%';
+    document.querySelector('#cdH div').style.height=(hPct*100)+'%';
+    document.querySelector('#cdE div').style.height=(ePct*100)+'%';
+    const dots=document.getElementById('dashDots');
+    if(dots){
+      dots.innerHTML='';
+      for(let i=0;i<2;i++){
+        const d=document.createElement('span');
+        d.className=`w-2 h-2 rounded-full ${i<player.dashCharges?'bg-[#86EFAC]':'bg-white/25'} border border-white/20`;
+        dots.appendChild(d);
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// AI
+function updateAI(f, dt){
+  if(!f.alive || f.hitStun>0) return;
+  f.aiTimer-=dt;
+  // find target
+  let target=null, bestDist=999;
+  fighters.forEach(o=>{
+    if(o===f||!o.alive) return;
+    const d=f.pos.distanceTo(o.pos);
+    // opportunistic targets high damage
+    let score=d;
+    if(f.aiType==='OPPORTUNISTIC') score-= o.damage*0.04;
+    if(f.aiType==='DEFENSIVE' && o.damage<40) score+=4;
+    if(score<bestDist){bestDist=score; target=o;}
+  });
+  if(!target) return;
+  const toTarget=target.pos.clone().sub(f.pos);
+  const dist=toTarget.length();
+  const horiz=new THREE.Vector3(toTarget.x,0,toTarget.z);
+  const hDist=horiz.length();
+  // movement
+  let moveDir=new THREE.Vector3();
+  if(f.aiType==='AGGRESSIVE'){
+    if(hDist>2.2) moveDir=horiz.normalize();
+    else if(hDist<1.2) moveDir=horiz.normalize().multiplyScalar(-0.5);
+  } else if(f.aiType==='DEFENSIVE'){
+    if(hDist>4) moveDir=horiz.normalize();
+    else if(hDist<2.5) moveDir=horiz.normalize().multiplyScalar(-0.6);
+    else moveDir=new THREE.Vector3(Math.sin(performance.now()*0.001+f.pos.x)*0.5,0, Math.cos(performance.now()*0.001+f.pos.z)*0.5);
+  } else { // opportunistic
+    if(target.damage>60 && hDist<5) moveDir=horiz.normalize();
+    else if(hDist>3) moveDir=horiz.normalize();
+    else moveDir=horiz.normalize().multiplyScalar(0.3);
+  }
+  // avoid void: if near edge and moving outward, steer to center
+  const centerDir=new THREE.Vector3().sub(f.pos); centerDir.y=0;
+  const edgeDist=Math.hypot(f.pos.x,f.pos.z);
+  if(edgeDist>7 && moveDir.dot(centerDir) <0){
+    moveDir.add(centerDir.normalize().multiplyScalar(0.7));
+  }
+  moveDir.normalize();
+  const speed=f.cfg.stats.speed * (f.speedTimer>0?1.3:1) * 0.92;
+  f.vel.x += moveDir.x*18*dt;
+  f.vel.z += moveDir.z*18*dt;
+  const horizSpeed=Math.hypot(f.vel.x,f.vel.z);
+  if(horizSpeed>speed){
+    f.vel.x = f.vel.x/horizSpeed*speed;
+    f.vel.z = f.vel.z/horizSpeed*speed;
+  }
+  if(moveDir.length()>0.1) f.yaw = Math.atan2(moveDir.x, moveDir.z);
+  else if(hDist<4) f.yaw = Math.atan2(toTarget.x, toTarget.z);
+
+  // jump logic
+  if(f.grounded && Math.random()<0.008) doJump(f);
+  if(!f.grounded && f.jumps<1 && Math.random()<0.02) doJump(f);
+
+  // recovery dash if launched
+  const launched = Math.hypot(f.vel.x,f.vel.z) >9 || f.pos.y < 0.5;
+  if(launched && f.dashCharges>0 && f.dashCd<=0){
+    const toCenter=new THREE.Vector3(-f.pos.x,0,-f.pos.z).normalize();
+    doDash(f, toCenter);
+  }
+
+  // attack
+  if(hDist<3.0 && f.aiTimer<=0){
+    const useHeavy = Math.random()<0.35 && dist<2.6;
+    if(useHeavy && f.heavyCd<=0){ doAttack(f,'heavy'); f.aiTimer=0.7+Math.random()*0.5; }
+    else if(f.attackCd<=0){ doAttack(f,'quick'); f.aiTimer=0.45+Math.random()*0.4; }
+  }
+  // special
+  if(f.specialCd<=0 && hDist<4.5 && target.damage>35 && Math.random()<0.015){
+    doSpecial(f);
+  }
+  // friction if no input
+  if(moveDir.length()<0.05){
+    f.vel.x*=0.9; f.vel.z*=0.9;
+  }
+}
+
+function endMatch(){
+  if(gameState!=='playing') return;
+  gameState='over';
+  hud.classList.add('hidden'); bottomHud.classList.add('hidden');
+  document.getElementById('crosshair').classList.add('hidden');
+  document.getElementById('tutorial').classList.add('hidden');
+  const alive=fighters.filter(f=>f.alive);
+  const winner = alive.length===1? alive[0] : fighters.slice().sort((a,b)=> (b.alive - a.alive) || (a.damage - b.damage) || (b.kos - a.kos))[0];
+  const isPlayerWin = winner && winner.isPlayer;
+  document.getElementById('overTitle').textContent = isPlayerWin? 'VICTORY!' : winner? `${winner.cfg.name} WINS!` : 'DRAW!';
+  document.getElementById('overTitle').style.color = isPlayerWin ? '#86EFAC' : winner? winner.cfg.color : '#fff';
+  document.getElementById('overSub').textContent = isPlayerWin? 'YOU ARE THE LAST VIBER STANDING' : 'BETTER LUCK NEXT BRAWL';
+  const stats=document.getElementById('overStats');
+  stats.innerHTML='';
+  fighters.forEach(f=>{
+    const row=document.createElement('div');
+    row.className=`rounded-2xl border-2 border-black p-3 text-center ${f===winner?'bg-[#86EFAC]':'bg-white'}`;
+    row.innerHTML=`
+      <div class="w-12 h-12 mx-auto rounded-xl border-2 border-black grid place-items-center" style="background:${f.cfg.color}">${f.isPlayer?'★':''}${f.cfg.id==='yellow'?'🟨':f.cfg.id==='blue'?'🟦':f.cfg.id==='pink'?'💗':'👻'}</div>
+      <div class="font-black text-xs mt-1 truncate">${f.cfg.name}</div>
+      <div class="text-[10px] tracking-widest opacity-60">${f.isPlayer?'YOU':f.aiType}</div>
+      <div class="mt-2 grid grid-cols-2 gap-1 text-[11px] font-bold">
+        <div class="bg-black text-white rounded-full py-1">${f.kos} KOs</div>
+        <div class="bg-black/10 rounded-full py-1">${Math.round(f.damage)}% DMG</div>
+        <div class="bg-black/10 rounded-full py-1">${Math.round(f.dmgDealt)} dealt</div>
+        <div class="bg-black/10 rounded-full py-1">${f.falls} falls</div>
+      </div>
+      <div class="mt-1 text-[10px] font-black tracking-widest ${f.alive?'text-green-600':'text-red-600'}">${f.alive?'SURVIVED':'ELIMINATED'}</div>
+    `;
+    stats.appendChild(row);
+  });
+  document.getElementById('screen-over').classList.remove('hidden');
+  beep(isPlayerWin?800:300,0.4,'square',0.2);
+}
+
+// initial camera menu position
+camera.position.set(14,10,14);
+camera.lookAt(0,1,0);
+
+// Prevent scrolling on mobile
+document.body.addEventListener('touchmove',e=>{if(gameState==='playing') e.preventDefault();},{passive:false});
+
+// Start loop already running, show menu
+showMenu();
+</script>
+</body>
+</html>
