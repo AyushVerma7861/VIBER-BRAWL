@@ -145,6 +145,111 @@
   }
   @keyframes viblive{ 50%{ opacity:.35; } }
   .vibe-link .vl-sub{ font-weight:700; font-size:10.5px; color:#5a4a2c; letter-spacing:.4px; }
+
+  /* ---------------- Golden skin teaser ---------------- */
+  .golden-teaser{
+    position:relative; overflow:hidden;
+    display:flex; align-items:center; gap:10px;
+    margin:10px auto 0; padding:8px 12px 8px 12px;
+    max-width:340px; width:100%;
+    background:linear-gradient(135deg,#fdf1c4 0%,#e8c672 60%,#fdf1c4 100%);
+    border:3px solid var(--ink); border-radius:14px;
+    box-shadow:0 4px 0 var(--ink);
+    opacity:.72;
+    transition: opacity .25s, transform .15s;
+    cursor:help;
+  }
+  .golden-teaser:hover{ opacity:1; transform:translateY(-2px); }
+  .golden-teaser::before{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(115deg,transparent 32%,rgba(255,255,255,.88) 50%,transparent 68%);
+    transform:translateX(-110%);
+    animation:gtshim 3.8s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes gtshim{
+    0%{ transform:translateX(-110%); }
+    55%,100%{ transform:translateX(210%); }
+  }
+  .gt-lock{ font-size:22px; flex:0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,.15)); }
+  .gt-body{ flex:1; min-width:0; }
+  .gt-title{ font-weight:800; font-size:11.5px; letter-spacing:1.2px; color:#5a3a10; line-height:1.1; }
+  .gt-sub{ font-weight:700; font-size:9.5px; color:#7a5a20; margin-top:2px; line-height:1.2; letter-spacing:.2px; }
+  .gt-status{
+    font-weight:800; font-size:9px; letter-spacing:1.5px;
+    padding:3px 8px; border:2px solid var(--ink); border-radius:7px;
+    background:#1b1d22; color:#ffd34d;
+    flex:0 0 auto;
+    animation: gtPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes gtPulse{ 50%{ background:#3a2a08; color:#fff2b0; } }
+
+  /* ---------------- Photo overlay ---------------- */
+  #photoOverlay{
+    position:fixed; inset:0;
+    display:none; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 40%, rgba(60,45,20,.85) 0%, rgba(15,10,5,.94) 100%);
+    backdrop-filter:blur(8px);
+    z-index:200;
+    padding:20px;
+    animation: poFadeIn .35s ease-out;
+  }
+  #photoOverlay.on{ display:flex; }
+  @keyframes poFadeIn{ from{ opacity:0; } to{ opacity:1; } }
+
+  .polaroid{
+    background:#fdfaf0;
+    padding:14px 14px 66px;
+    border-radius:4px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.15);
+    transform: rotate(-2.6deg);
+    max-width:470px; width:92%;
+    position:relative;
+    animation: photoIn .55s cubic-bezier(.2,1.55,.4,1);
+  }
+  @keyframes photoIn{
+    0%{ transform: rotate(-2.6deg) scale(.55); opacity:0; }
+    100%{ transform: rotate(-2.6deg) scale(1); opacity:1; }
+  }
+  .polaroid img{
+    display:block; width:100%; border-radius:2px;
+    background:#1b1d22;
+  }
+  .polaroid .pcap{
+    position:absolute; bottom:12px; left:0; right:0;
+    text-align:center;
+    font-weight:800; font-size:16px; letter-spacing:1.5px;
+    color:#1b1d22;
+  }
+  .polaroid .pcap-sub{
+    display:block;
+    font-size:9.5px; font-weight:700; color:#8a7a5c;
+    letter-spacing:2px; margin-top:3px;
+  }
+  .photo-btns{
+    display:flex; gap:10px; margin-top:26px;
+    flex-wrap:wrap; justify-content:center;
+  }
+  .photo-btns button{
+    font-family:inherit; font-weight:800; font-size:15px;
+    padding:11px 20px; border-radius:12px;
+    border:3px solid var(--ink);
+    cursor:pointer;
+    box-shadow:0 5px 0 var(--ink);
+    transition: transform .07s, box-shadow .07s, filter .15s;
+    letter-spacing:.5px;
+  }
+  .photo-btns button:hover{ filter:brightness(1.06); }
+  .photo-btns button:active{ transform:translateY(3px); box-shadow:0 1px 0 var(--ink); }
+  .photo-btns .share{ background:#000; color:#fff; }
+  .photo-btns .download{ background:var(--yellow); color:var(--ink); }
+  .photo-btns .continue{ background:#7fe0a8; color:var(--ink); }
+  .photo-hint{
+    color:#c9bca0; font-weight:700; font-size:11px;
+    letter-spacing:1.5px; margin-top:14px; text-align:center;
+    max-width:420px; line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -179,6 +284,15 @@
     <div class="vl-title"><span class="dot-live"></span>$VIBRAWL is LIVE on TESTNET</div>
     <div class="vl-sub">vibe/vibe launchpad →</div>
   </a>
+
+  <div class="golden-teaser" title="A secret reward for VIBRAWL holders...">
+    <div class="gt-lock">🔒</div>
+    <div class="gt-body">
+      <div class="gt-title">GOLDEN VIBER SKIN</div>
+      <div class="gt-sub">Exclusive for $VIBRAWL holders</div>
+    </div>
+    <div class="gt-status">SOON</div>
+  </div>
 
   <div class="menu-credit">
     Built by <a href="https://x.com/RAVEN_SPARK7" target="_blank" rel="noopener">@RAVEN_SPARK7</a> · For the VIBERS
@@ -258,6 +372,23 @@
   </div>
 </div>
 <div id="loader">LOADING VIBER BRAWL…</div>
+
+<div id="photoOverlay">
+  <div class="polaroid">
+    <img id="polaroidImg" alt="Victory moment">
+    <div class="pcap">
+      VIBER BRAWL
+      <span class="pcap-sub" id="polaroidSub">LAST VIBER STANDING</span>
+    </div>
+  </div>
+  <div class="photo-btns">
+    <button class="share" id="btnSharePhoto">𝕏 SHARE YOUR BRAWL</button>
+    <button class="download" id="btnDownloadPhoto">⬇ DOWNLOAD</button>
+    <button class="continue" id="btnContinuePhoto">CONTINUE</button>
+  </div>
+  <div class="photo-hint">Tag <b style="color:#ffd34d;">@RAVEN_SPARK7</b> &amp; <b style="color:#ffd34d;">@vibevibefun</b> when you share — let them see your Viber!</div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
@@ -325,7 +456,14 @@ const SFX={
   click(){ this.tone(520,0.05,'square',0.12); this.tone(780,0.06,'square',0.09,null,0.05); },
   count(n){ this.tone(n===0?880:520,0.16,'square',0.22); },
   ability(){ this.tone(200,0.3,'sawtooth',0.2,900); this.noise(0.25,0.2,1600,1.2); },
-  spike(){ this.noise(0.12,0.25,600,1); this.tone(180,0.12,'square',0.14,90); }
+  spike(){ this.noise(0.12,0.25,600,1); this.tone(180,0.12,'square',0.14,90); },
+  victory(){
+    this.tone(523.25,0.14,'square',0.20);
+    this.tone(659.25,0.14,'square',0.20, null, 0.13);
+    this.tone(783.99,0.14,'square',0.20, null, 0.26);
+    this.tone(1046.50,0.42,'square',0.24, null, 0.39);
+    this.noise(0.5,0.12,3000,0.6,0.5);
+  }
 };
 
 const Music={
@@ -348,7 +486,7 @@ const Music={
 };
 
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance', preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -666,6 +804,7 @@ class Fighter{
     this.kos=0; this.falls=0; this.dmgDealt=0; this.dmgTaken=0;
     this.ai={timer:0,behavior:'aggressive',target:null,atkCd:0,jumpCd:0,wantPower:null,retreat:0};
     this.lastHitBy=null; this.alive=true;
+    this._emoteBurstDone=false;
   }
   reset(x,z,stocks){
     this.pos.set(x,groundYAt(x,z,20)||0,z);
@@ -679,6 +818,7 @@ class Fighter{
     this.hitstun=0; this.moveLock=0; this.invuln=1.6;
     this.phaseT=0; this.shield=0; this.speedBuff=0; this.damageBuff=0; this.dashBuff=0;
     this.koT=0; this.flash=0;
+    this._emoteBurstDone=false;
     this.model.bodyPivot.rotation.set(0,0,0);
     this.model.bodyPivot.position.set(0,0,0);
     this.group.visible=true; this.group.scale.setScalar(0.8);
@@ -757,7 +897,7 @@ const touch={stickActive:false,sx:0,sz:0,id:null};
   });
 })();
 
-const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'hard', winner:null };
+const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'hard', winner:null, victoryPhase:null, victoryT:0 };
 createFighters();
 buildHazards();
 applyHazardsForDifficulty(Game.difficulty);
@@ -895,7 +1035,117 @@ function stepFighter(f,dt,ctrl){
   updateModelTransform(f,dt);
 }
 
+/* ---------- Victory emote (per-character) ---------- */
+function applyEmotePose(f, t){
+  const m=f.model;
+  const id=f.def.id;
+
+  if(id==='miner'){
+    if(t<0.30){
+      const p=t/0.30;
+      m.armR.rotation.x=-2.4*p;
+      m.armR.rotation.z=-0.4*p;
+    } else if(t<0.50){
+      const p=(t-0.30)/0.20;
+      const e=p*p;
+      m.armR.rotation.x=-2.4+3.6*e;
+      m.armR.rotation.z=-0.4+0.5*p;
+      m.bodyPivot.rotation.x=0.25*p;
+    } else {
+      const p=(t-0.50)/0.50;
+      const e=1-Math.exp(-4*p);
+      m.armR.rotation.x=lerp(m.armR.rotation.x,-1.4,e);
+      m.armR.rotation.z=lerp(m.armR.rotation.z, 0.15,e);
+      m.armL.rotation.x=-1.3*e;
+      m.armL.rotation.z=0.15*e;
+      m.bodyPivot.rotation.x=-0.12*e;
+      m.head.rotation.x=0.28*e;
+    }
+  } else if(id==='moss'){
+    if(t<0.40){
+      const p=t/0.40;
+      m.bodyPivot.position.y=-0.45*Math.sin(p*Math.PI);
+      m.legL.rotation.x=0.4*Math.sin(p*Math.PI);
+      m.legR.rotation.x=0.4*Math.sin(p*Math.PI);
+      m.armL.rotation.x=-0.5*Math.sin(p*Math.PI);
+      m.armR.rotation.x=-0.5*Math.sin(p*Math.PI);
+    } else {
+      const p=(t-0.40)/0.60;
+      const e=1-Math.exp(-4*p);
+      m.armL.rotation.z= 1.3*e;
+      m.armR.rotation.z=-1.3*e;
+      m.armL.rotation.x=-0.5*e;
+      m.armR.rotation.x=-0.5*e;
+      m.bodyPivot.rotation.x=-0.10*e;
+      m.bodyPivot.position.y=0;
+      m.legL.rotation.x=0; m.legR.rotation.x=0;
+    }
+  } else if(id==='volt'){
+    const spin = Math.sin(t*Math.PI*6);
+    m.bodyPivot.rotation.y = spin*0.9*(1-t);
+    const p=Math.min(t/0.4,1);
+    m.armR.rotation.x=-2.6*p;
+    m.armR.rotation.z=-0.3*p;
+    m.head.rotation.x=-0.22*p;
+    m.bodyPivot.position.y = 0.15*Math.sin(t*Math.PI*4);
+  } else if(id==='phantom'){
+    const float = 0.25 + 0.55*Math.sin(t*Math.PI*2.2);
+    m.bodyPivot.position.y = float;
+    m.bodyPivot.rotation.y = Math.sin(t*Math.PI*5)*0.5;
+    m.armL.rotation.z = 0.5 + Math.sin(t*Math.PI*4)*0.25;
+    m.armR.rotation.z = -0.5 - Math.sin(t*Math.PI*4)*0.25;
+    m.armL.rotation.x = -0.4;
+    m.armR.rotation.x = -0.4;
+    m.head.rotation.y = Math.sin(t*Math.PI*3)*0.25;
+  }
+}
+
+function updateEmoteTransform(f, dt){
+  const m=f.model;
+  f.group.position.copy(f.pos);
+
+  const dx = camera.position.x - f.pos.x;
+  const dz = camera.position.z - f.pos.z;
+  f.group.rotation.y = Math.atan2(dx, dz);
+
+  m.bodyPivot.rotation.set(0,0,0);
+  m.bodyPivot.position.set(0,0,0);
+  m.head.rotation.set(0,0,0);
+  m.armL.rotation.set(0,0,0.06);
+  m.armR.rotation.set(0,0,-0.06);
+  m.legL.rotation.set(0,0,0);
+  m.legR.rotation.set(0,0,0);
+
+  const EMOTE_DUR = 2.6;
+  const t = Math.min(1, Game.victoryT / EMOTE_DUR);
+  applyEmotePose(f, t);
+
+  if(!f._emoteBurstDone && t > 0.5){
+    f._emoteBurstDone = true;
+    const colorsMap = {
+      miner:   [0xd23a2a, 0x8b5a3a, 0xffd34d],
+      moss:    [0x8fffaa, 0x2a3035, 0xffffff],
+      volt:    [0xffe880, 0x2a8040, 0xfff0a0],
+      phantom: [0x4ad0c0, 0xb0b0b0, 0xffffff]
+    };
+    const cols = colorsMap[f.def.id] || [0xffd34d];
+    for(let i=0;i<22;i++){
+      burst(f.pos.x + rand(-1.2,1.2), f.pos.y + 1.5 + rand(0,1.5), f.pos.z + rand(-1.2,1.2),
+            cols[i%cols.length], 2, 9, 0.9, 1.1, true);
+    }
+    impactRing(f.pos.x, f.pos.y+1.2, f.pos.z, cols[0], 1.4);
+  }
+
+  f.group.visible = true;
+  for(const mat of m.mats) if(mat.emissive) mat.emissive.setHex(mat.userData.baseEmissive||0x000000);
+}
+
 function updateModelTransform(f,dt){
+  if(Game.victoryPhase==='emote' && Game.winner===f){
+    updateEmoteTransform(f, dt);
+    return;
+  }
+
   const spd=Math.hypot(f.vx,f.vz);
   f.animT+=dt*(3.2+spd*0.85);
   const m=f.model;
@@ -1304,6 +1554,7 @@ function startMatch(charIndex, tutorial){
   Game.selectedChar=charIndex;
   Game.over=false; Game.paused=false;
   Game.hitStop=0; Game.shake=0;
+  Game.victoryPhase=null; Game.victoryT=0;
   Game.matchTime=CFG.matchTime; Game.playerSurvived=0; Game.winner=null;
   Game.mode=tutorial?'tutorial':'play'; Game.camYaw=0;
   if(tutorial) applyHazardsForDifficulty('easy');
@@ -1336,6 +1587,7 @@ function startMatch(charIndex, tutorial){
   buildCards();
   ui.hud.classList.add('on');
   showScreen(null);
+  hidePhotoOverlay();
   Game.countdown=3.4;
   if(tutorial) Tutorial.start();
   else { announce('3',0.7); SFX.count(3); }
@@ -1354,7 +1606,15 @@ function endMatch(){
   SFX.ko();
   Music.stop();
   announce('GAME OVER!',1.6);
-  setTimeout(()=>showResults(),1500);
+
+  if(winner){
+    winner._emoteBurstDone=false;
+    Game.victoryPhase='emote';
+    Game.victoryT=0;
+    setTimeout(()=>{ if(Game.victoryPhase==='emote') SFX.victory(); }, 350);
+  } else {
+    setTimeout(()=>showResults(),1500);
+  }
 }
 function checkMatchEnd(){
   if(Game.mode==='tutorial') return;
@@ -1389,6 +1649,61 @@ function showResults(){
   updateMenuStats();
 }
 
+/* ---------- Victory photo flow ---------- */
+function captureVictoryPhoto(){
+  try{
+    renderer.render(scene, camera);
+    const dataURL = renderer.domElement.toDataURL('image/png');
+    const img = document.getElementById('polaroidImg');
+    img.src = dataURL;
+    Game._lastPhoto = dataURL;
+    return true;
+  } catch(e){
+    console.warn('Photo capture failed:', e);
+    return false;
+  }
+}
+function enterPhotoMode(){
+  Game.victoryPhase='photo';
+  const ok = captureVictoryPhoto();
+  const winnerName = Game.winner ? Game.winner.def.name : 'VIBER';
+  document.getElementById('polaroidSub').textContent = '· ' + winnerName + ' ·';
+  document.getElementById('photoOverlay').classList.add('on');
+  if(!ok) SFX.blip();
+}
+function hidePhotoOverlay(){
+  document.getElementById('photoOverlay').classList.remove('on');
+}
+document.getElementById('btnContinuePhoto').addEventListener('click', ()=>{
+  SFX.click();
+  hidePhotoOverlay();
+  Game.victoryPhase=null;
+  showResults();
+});
+document.getElementById('btnSharePhoto').addEventListener('click', ()=>{
+  SFX.click();
+  const url = location.origin + location.pathname;
+  const winnerName = Game.winner ? Game.winner.def.name : 'a VIBER';
+  const text = 'I just became the LAST VIBER STANDING in VIBER BRAWL 🥊🔥\n\n'
+              + 'Fighter: ' + winnerName + '\n'
+              + 'Built for the VIBERS · $VIBRAWL on @vibevibefun\n\n'
+              + '@RAVEN_SPARK7 @meta_alchemist';
+  const share = 'https://x.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url);
+  window.open(share, '_blank', 'noopener');
+});
+document.getElementById('btnDownloadPhoto').addEventListener('click', ()=>{
+  SFX.click();
+  const data = Game._lastPhoto;
+  if(!data) return;
+  const a = document.createElement('a');
+  const winnerName = Game.winner ? Game.winner.def.name.split(' ')[0].toLowerCase() : 'viber';
+  a.href = data;
+  a.download = 'viber-brawl-victory-' + winnerName + '.png';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+});
+
 function updateWorld(dt){
   Game.time+=dt;
   let sdt=dt;
@@ -1420,6 +1735,19 @@ function updateWorld(dt){
     if(after!==before&&after>0){ announce(String(after),0.7); SFX.count(after); }
     if(Game.countdown<=0){ announce('FIGHT!',0.9); SFX.count(0); }
   }
+
+  if(Game.victoryPhase==='emote'){
+    Game.victoryT += dt;
+    if(Game.victoryT > 2.6){
+      if(Game.winner === player){
+        enterPhotoMode();
+      } else {
+        Game.victoryPhase = null;
+        showResults();
+      }
+    }
+  }
+
   for(let i=0;i<fighters.length;i++){
     const f=fighters[i];
     let ctrl=blankCtrl();
@@ -1431,6 +1759,11 @@ function updateWorld(dt){
     }
     stepFighter(f,sdt,ctrl);
   }
+
+  if(Game.victoryPhase==='emote' && Game.winner){
+    updateEmoteTransform(Game.winner, dt);
+  }
+
   for(let i=0;i<fighters.length;i++){
     for(let j=i+1;j<fighters.length;j++){
       const a=fighters[i],b=fighters[j];
@@ -1488,6 +1821,19 @@ const camLookAt=new THREE.Vector3();
 const _camDesired=new THREE.Vector3();
 const _camLookTarget=new THREE.Vector3();
 function updateCamera(dt){
+  if((Game.victoryPhase==='emote' || Game.victoryPhase==='photo') && Game.winner){
+    const w = Game.winner;
+    Game.camYaw += dt * 0.55;
+    const r = 10.5;
+    const cx = w.pos.x + Math.sin(Game.camYaw) * r;
+    const cz = w.pos.z + Math.cos(Game.camYaw) * r;
+    const cy = w.pos.y + 4.2;
+    camera.position.lerp(_camDesired.set(cx, cy, cz), 1 - Math.exp(-5*dt));
+    camLookAt.lerp(_camLookTarget.set(w.pos.x, w.pos.y + 1.6, w.pos.z), 1 - Math.exp(-7*dt));
+    camera.lookAt(camLookAt);
+    return;
+  }
+
   let follow=player;
   if(Game.mode==='menu'){
     Game.camYaw+=dt*0.18;
@@ -1571,17 +1917,9 @@ const Tutorial={
 (function setupMute(){
   const btn=document.getElementById('muteBtn');
   if(!btn) return;
-
-  function refresh(){
-    btn.textContent = SFX.enabled ? '🔊' : '🔇';
-    btn.title = SFX.enabled ? 'Mute' : 'Unmute';
-  }
-
-  try{
-    if(localStorage.getItem('viberbrawl_muted')==='1') SFX.enabled=false;
-  }catch(e){}
+  function refresh(){ btn.textContent = SFX.enabled ? '🔊' : '🔇'; btn.title = SFX.enabled ? 'Mute' : 'Unmute'; }
+  try{ if(localStorage.getItem('viberbrawl_muted')==='1') SFX.enabled=false; }catch(e){}
   refresh();
-
   btn.addEventListener('click',e=>{
     e.stopPropagation();
     SFX.init(); SFX.resume();
@@ -1602,6 +1940,8 @@ function updateMenuStats(){
 function resetToMenu(){
   Game.mode='menu';
   Game.over=false; Game.paused=false;
+  Game.victoryPhase=null; Game.victoryT=0;
+  hidePhotoOverlay();
   ui.hud.classList.remove('on');
   Music.stop();
   applyHazardsForDifficulty(Game.difficulty);
@@ -1611,6 +1951,7 @@ function resetToMenu(){
     f.state='active'; f.stocks=CFG.stocks; f.health=f.maxHealth;
     f.group.visible=true;
     f.model.bodyPivot.rotation.set(0,0,0);
+    f.model.bodyPivot.position.set(0,0,0);
     f.reset(spawnPoints[i][0],spawnPoints[i][2]);
     f.invuln=0;
   }
@@ -1693,6 +2034,62 @@ document.getElementById('loader').style.display='none';
 resetToMenu();
 Music.start();
 requestAnimationFrame(loop);
+
+/* ---------- EMOTE PREVIEW MODE ----------
+   Add ?emote=miner | ?emote=moss | ?emote=volt | ?emote=phantom to the URL
+   to jump straight into that Viber's victory emote. Also supports ?emote=all
+   to cycle through all 4 back to back. */
+(function emotePreview(){
+  const params = new URLSearchParams(location.search);
+  const target = params.get('emote');
+  if(!target) return;
+
+  const idxById = { miner:0, moss:1, volt:2, phantom:3 };
+  const cycle = (target==='all') ? [0,1,2,3] : [idxById[target]];
+  if(!cycle.length || cycle[0]===undefined) return;
+
+  screens.forEach(s=>{ const el=document.getElementById(s); if(el) el.classList.remove('on'); });
+  ui.hud.classList.add('on');
+  buildCards();
+  Game.mode='play';
+
+  let step = 0;
+  function playOne(){
+    if(step >= cycle.length){
+      step = 0;
+      setTimeout(playOne, 400);
+      return;
+    }
+    const i = cycle[step++];
+    const w = fighters[i];
+    for(const f of fighters){
+      if(f===w) continue;
+      f.state='dead'; f.group.visible=false;
+    }
+    w.state='active';
+    w.reset(0, 0);
+    w.health = w.maxHealth;
+    w._emoteBurstDone = false;
+
+    Game.winner = w;
+    Game.victoryPhase = 'emote';
+    Game.victoryT = 0;
+    Game.camYaw = 0;
+    SFX.init(); SFX.resume();
+    setTimeout(()=>SFX.victory(), 300);
+
+    setTimeout(()=>{
+      if(Game.victoryPhase==='emote'){
+        Game.victoryPhase = null;
+        w.model.bodyPivot.rotation.set(0,0,0);
+        w.model.bodyPivot.position.set(0,0,0);
+        setTimeout(playOne, 300);
+      }
+    }, 3200);
+  }
+
+  setTimeout(playOne, 500);
+})();
 
 window.addEventListener('pointerdown',function once(){ SFX.init(); SFX.resume(); Music.start(); window.removeEventListener('pointerdown',once); });
 window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Music.start(); window.removeEventListener('keydown',onceK); });
