@@ -12,6 +12,7 @@
     --ink:#0C0F08; --cream:#F3E6C4; --lime:#DFF902; --lime-text:#C8F000;
     --navy:#0B1220; --navy-mid:#152238; --navy-deep:#060A14;
     --lantern:#FF9A1F; --lantern-gold:#FFD36A;
+    --vibe-purple:#A56BFF; --vibe-purple-deep:#7B5CFF;
     --outline:#0A0A0A; --muted:rgba(243,230,196,.55);
     --yellow:var(--lime); --blue:#7B5CFF; --pink:#5CFFE7; --cyan:#5CFFE7;
   }
@@ -19,11 +20,7 @@
   body{ font-family:'Baloo 2', system-ui, -apple-system, sans-serif; color:var(--cream); user-select:none; -webkit-user-select:none; touch-action:none; }
   canvas{ display:block; width:100%; height:100%; position:absolute; inset:0; }
 
-  .brandStamp{
-    position:fixed; top:14px; left:14px; z-index:110;
-    width:46px; height:56px; opacity:.92; pointer-events:none;
-    filter: drop-shadow(0 2px 6px rgba(0,0,0,.55));
-  }
+  .brandStamp{ position:fixed; top:14px; left:14px; z-index:110; width:46px; height:56px; opacity:.92; pointer-events:none; filter: drop-shadow(0 2px 6px rgba(0,0,0,.55)); }
   @media (max-width:720px){ .brandStamp{ width:38px; height:46px; top:10px; left:10px; } }
 
   #hud{ position:absolute; inset:0; pointer-events:none; display:none; }
@@ -106,6 +103,7 @@
   .diffbtn[data-diff="easy"]{ background:rgba(124,255,107,.12); color:#7CFF6B; border-color:#7CFF6B; }
   .diffbtn[data-diff="medium"]{ background:rgba(255,211,106,.12); color:var(--lantern-gold); border-color:var(--lantern-gold); }
   .diffbtn[data-diff="hard"]{ background:rgba(255,91,91,.12); color:#FF5B5B; border-color:#FF5B5B; }
+  .mapbtn[data-map="vibeworld"]{ background:rgba(223,249,2,.12); color:var(--lime); border-color:var(--lime); }
   .mapbtn[data-map="classic"]{ background:rgba(243,230,196,.12); color:#F3E6C4; border-color:#F3E6C4; }
   .mapbtn[data-map="dungeon"]{ background:rgba(255,211,106,.12); color:var(--lantern-gold); border-color:var(--lantern-gold); }
   .diffbtn.sel, .mapbtn.sel{ outline:4px solid var(--lime); outline-offset:-8px; box-shadow:0 4px 0 var(--outline), 0 0 20px rgba(223,249,2,.3); }
@@ -222,7 +220,8 @@
     <div id="charGrid"></div>
     <div class="maplabel">ARENA</div>
     <div class="maprow" id="mapRow">
-      <button class="mapbtn sel" data-map="classic">CLASSIC<br><span style="font-size:9px;">bright &amp; airy</span></button>
+      <button class="mapbtn sel" data-map="vibeworld">VIBE WORLD<br><span style="font-size:9px;">energy arena</span></button>
+      <button class="mapbtn" data-map="classic">CLASSIC<br><span style="font-size:9px;">bright &amp; airy</span></button>
       <button class="mapbtn" data-map="dungeon">DUNGEON<br><span style="font-size:9px;">lantern-lit</span></button>
     </div>
     <div class="difflabel">DIFFICULTY</div>
@@ -408,29 +407,35 @@ renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
 
 /* ============================================================
-   ARENA MAP PRESETS — switchable between CLASSIC and DUNGEON
+   ARENA MAP PRESETS
    ============================================================ */
 const MAPS = {
+  vibeworld: {
+    name:'VIBE WORLD',
+    sky: 0x0a0d1a,
+    fogNear: 60, fogFar: 150,
+    hemiSky: 0x8a9ac8, hemiGround: 0x1a1e30, hemiIntensity: 0.72,
+    sunColor: 0xffe8b0, sunIntensity: 0.55,
+    lanterns: false, vibeWorld: true,
+    cloudColor: 0x2a1e4a, cloudOpacity: 0.35,
+    cloudYMin: 22, cloudYMax: 42
+  },
   classic: {
     name:'CLASSIC',
-    sky: 0xf6e7bf,
-    fogNear: 62, fogFar: 150,
+    sky: 0xf6e7bf, fogNear: 62, fogFar: 150,
     hemiSky: 0xffffff, hemiGround: 0xd8c69a, hemiIntensity: 0.82,
     sunColor: 0xfff3d6, sunIntensity: 0.95,
-    lanterns: false,
-    cloudColor: 0xfffaf0,
-    cloudOpacity: 1.0,
+    lanterns: false, vibeWorld: false,
+    cloudColor: 0xfffaf0, cloudOpacity: 1.0,
     cloudYMin: 14, cloudYMax: 34
   },
   dungeon: {
     name:'DUNGEON',
-    sky: 0x1c2942,
-    fogNear: 48, fogFar: 130,
+    sky: 0x1c2942, fogNear: 48, fogFar: 130,
     hemiSky: 0x7a8ab0, hemiGround: 0x2a2e3e, hemiIntensity: 0.85,
     sunColor: 0xFFD36A, sunIntensity: 0.52,
-    lanterns: true,
-    cloudColor: 0x2a3a55,
-    cloudOpacity: 0.4,
+    lanterns: true, vibeWorld: false,
+    cloudColor: 0x2a3a55, cloudOpacity: 0.4,
     cloudYMin: 18, cloudYMax: 38
   }
 };
@@ -456,10 +461,13 @@ const outlineMat=new THREE.LineBasicMaterial({color:0x14161a});
 const edgeCache=new Map();
 function edgeGeo(g){ const p=g.parameters; const key=(p.width||0)+'_'+(p.height||0)+'_'+(p.depth||0)+'_'+(p.radius||0); if(!edgeCache.has(key)) edgeCache.set(key,new THREE.EdgesGeometry(g)); return edgeCache.get(key); }
 function mkBox(w,h,d,mat,outline){ const g=new THREE.BoxGeometry(w,h,d); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; if(outline!==false) m.add(new THREE.LineSegments(edgeGeo(g),outlineMat)); return m; }
+function mkEdgeBox(w,h,d,mat,outlineColor){ const g=new THREE.BoxGeometry(w,h,d); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; m.add(new THREE.LineSegments(edgeGeo(g), new THREE.LineBasicMaterial({color:outlineColor||0x0A0A0A}))); return m; }
 
+/* ============================================================
+   VIBER CHARACTERS — unchanged
+   ============================================================ */
 const CHARACTERS=[
-  {
-    id:'miner', name:'CRIMSON MINER VIBER', tag:'HEAVY',
+  { id:'miner', name:'CRIMSON MINER VIBER', tag:'HEAVY',
     desc:'A grizzled deep-mine brawler with a pickaxe and a grudge. Slow, but one good swing flattens the ring.',
     abilityName:'MINER SMASH', abilityDesc:'Leaps skyward then crashes down, launching everyone in a wide circle.',
     abilityCd:8, img:'viber-miner.png',
@@ -479,8 +487,7 @@ const CHARACTERS=[
     armExtrasL:[{w:0.50,h:0.20,d:0.54, x:0,y:-0.88,z:0, c:'accent'}],
     armExtrasR:[{w:0.50,h:0.20,d:0.54, x:0,y:-0.88,z:0, c:'accent'},{w:0.16,h:1.80,d:0.16, x:0,y:-0.30,z:-0.60, c:'accent'},{w:0.95,h:0.22,d:0.24, x:0,y: 0.55,z:-0.60, c:'visor'}]
   },
-  {
-    id:'moss', name:'MOSS VIBER', tag:'HEAVY',
+  { id:'moss', name:'MOSS VIBER', tag:'HEAVY',
     desc:'Slate-capped green machine. Big eyes, bigger slams, and the slowest legs in the arena.',
     abilityName:'SEISMIC SLAM', abilityDesc:'Ground-pounds into a shockwave. Same weight, meaner attitude.',
     abilityCd:8, img:'viber-moss.png',
@@ -496,8 +503,7 @@ const CHARACTERS=[
     armExtrasL:[{w:0.48,h:0.20,d:0.54, x:0,y:-0.28,z:0, c:'visor'}],
     armExtrasR:[{w:0.48,h:0.20,d:0.54, x:0,y:-0.28,z:0, c:'visor'}]
   },
-  {
-    id:'volt', name:'VOLT VIBER', tag:'SPEED',
+  { id:'volt', name:'VOLT VIBER', tag:'SPEED',
     desc:'Electric blue blur in a top hat. Outruns, outflanks, outclasses — just don\'t get hit.',
     abilityName:'FLASH DASH', abilityDesc:'Blinks forward in a lightning streak, smacking anyone caught in the landing zone.',
     abilityCd:5, img:'viber-volt.png',
@@ -514,8 +520,7 @@ const CHARACTERS=[
     armExtrasL:[{w:0.50,h:0.22,d:0.54, x:0,y:-0.88,z:0, c:'accent'}],
     armExtrasR:[{w:0.50,h:0.22,d:0.54, x:0,y:-0.88,z:0, c:'accent'}]
   },
-  {
-    id:'phantom', name:'PHANTOM VIBER', tag:'TRICKSTER',
+  { id:'phantom', name:'PHANTOM VIBER', tag:'TRICKSTER',
     desc:'A translucent phantom with stepped ears. Slips through attacks like smoke and strikes from nowhere.',
     abilityName:'PHASE', abilityDesc:'Becomes invulnerable and 45% faster for 2 seconds. Untouchable.',
     abilityCd:7, img:'viber-phantom.png',
@@ -578,10 +583,14 @@ function buildViber(def){
   return {root,bodyPivot,head,mats,legL,legR,armL,armR,visorMat,eyeMat};
 }
 
+/* ============================================================
+   ARENA GEOMETRY
+   ============================================================ */
 const platforms=[];
 const arenaGroup=new THREE.Group();
 scene.add(arenaGroup);
 let lanternGroup=null;
+let vibeWorldGroup=null;
 let cloudGroup=null;
 
 function slab(cx,cz,w,d,topY,h,color,outline,noPlatform){
@@ -609,21 +618,19 @@ function buildArena(){
 }
 buildArena();
 
+/* Lanterns (dungeon map) */
 function buildLanterns(){
   lanternGroup = new THREE.Group();
   lanternGroup.visible = false;
   scene.add(lanternGroup);
-
   const corners = [[-15,8,-15],[15,8,-15],[-15,8,15],[15,8,15]];
   const housingMat = new THREE.MeshLambertMaterial({color:0x1a1d28});
   const chainMat   = new THREE.MeshLambertMaterial({color:0x0a0c12});
   const glowMat    = new THREE.MeshBasicMaterial({color:0xFFD36A});
   const coreMat    = new THREE.MeshBasicMaterial({color:0xFFF2C0});
   const haloMat    = new THREE.MeshBasicMaterial({color:0xFF9A1F, transparent:true, opacity:0.14, depthWrite:false, side:THREE.BackSide});
-
   for(const [x,y,z] of corners){
-    const g = new THREE.Group();
-    g.position.set(x, y, z);
+    const g = new THREE.Group(); g.position.set(x, y, z);
     const chain = mkBox(0.08, 6, 0.08, chainMat); chain.position.y = 3.8; g.add(chain);
     const roof = mkBox(1.15, 0.16, 1.15, housingMat); roof.position.y = 0.85; g.add(roof);
     const base = mkBox(1.15, 0.16, 1.15, housingMat); base.position.y = -0.85; g.add(base);
@@ -633,13 +640,180 @@ function buildLanterns(){
     const core = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.65, 0.45), coreMat); core.castShadow=false; core.receiveShadow=false; g.add(core);
     const halo = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.6, 2.0), haloMat); halo.castShadow=false; halo.receiveShadow=false; g.add(halo);
     lanternGroup.add(g);
-    const light = new THREE.PointLight(0xFF9A1F, 1.15, 24, 1.8);
-    light.position.set(x, y, z);
-    lanternGroup.add(light);
+    const light = new THREE.PointLight(0xFF9A1F, 1.15, 24, 1.8); light.position.set(x, y, z); lanternGroup.add(light);
   }
 }
 buildLanterns();
 
+/* ============================================================
+   VIBE WORLD MAP — energy arena with central structure
+   ============================================================ */
+function buildVibeWorld(){
+  vibeWorldGroup = new THREE.Group();
+  vibeWorldGroup.visible = false;
+  scene.add(vibeWorldGroup);
+
+  const LIME = 0xDFF902;
+  const PURPLE = 0xA56BFF;
+  const PURPLE_DEEP = 0x7B5CFF;
+  const STONE = 0xc8b88a;   // cream stone
+  const STONE_DARK = 0x6a5a3a;
+  const DARK = 0x1a1a28;
+
+  const stoneMat = new THREE.MeshLambertMaterial({color:STONE});
+  const stoneDarkMat = new THREE.MeshLambertMaterial({color:STONE_DARK});
+  const darkMat = new THREE.MeshLambertMaterial({color:DARK});
+  const limeGlowMat = new THREE.MeshBasicMaterial({color:LIME});
+  const purpleGlowMat = new THREE.MeshBasicMaterial({color:PURPLE});
+  const purpleDeepMat = new THREE.MeshBasicMaterial({color:PURPLE_DEEP});
+
+  /* ---------- Central Vibe energy structure ---------- */
+  const centre = new THREE.Group();
+  centre.position.set(0, 0, 0);
+
+  /* Base plate under the ring */
+  const basePlate = mkEdgeBox(7.2, 0.5, 7.2, stoneDarkMat, 0x0A0A0A);
+  basePlate.position.set(0, 0.25, 0);
+  centre.add(basePlate);
+
+  /* Platform ring (lime edge) */
+  const ring = mkEdgeBox(6.4, 0.35, 6.4, new THREE.MeshLambertMaterial({color:0x5a4a2a}), 0x0A0A0A);
+  ring.position.set(0, 0.6, 0);
+  centre.add(ring);
+
+  /* Central V glyph made of voxels */
+  const vLeftTop = mkEdgeBox(0.9, 2.2, 0.6, purpleGlowMat, 0x0A0A0A); vLeftTop.position.set(-0.9, 3.4, 0); vLeftTop.rotation.z =  0.32; centre.add(vLeftTop);
+  const vRightTop = mkEdgeBox(0.9, 2.2, 0.6, purpleGlowMat, 0x0A0A0A); vRightTop.position.set( 0.9, 3.4, 0); vRightTop.rotation.z = -0.32; centre.add(vRightTop);
+  const vBottom = mkEdgeBox(0.85, 0.85, 0.9, limeGlowMat, 0x0A0A0A); vBottom.position.set(0, 2.35, 0); centre.add(vBottom);
+
+  /* Purple beam core pillar */
+  const corePillar = mkEdgeBox(0.9, 5.2, 0.9, purpleDeepMat, 0x0A0A0A);
+  corePillar.position.set(0, 3.2, 0);
+  centre.add(corePillar);
+
+  /* Halo crown around the V */
+  const haloRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.14, 6, 20), purpleGlowMat);
+  haloRing.position.set(0, 4.9, 0);
+  haloRing.rotation.x = Math.PI/2;
+  centre.add(haloRing);
+
+  /* Floating voxel energy cubes around the V (orbit) */
+  const orbitMat = new THREE.MeshLambertMaterial({color:LIME, emissive:LIME, emissiveIntensity:0.8});
+  for(let i=0;i<6;i++){
+    const a = (i/6)*TAU;
+    const c = mkEdgeBox(0.55, 0.55, 0.55, orbitMat, 0x0A0A0A);
+    c.position.set(Math.cos(a)*2.9, 3.2 + Math.sin(i*1.3)*0.5, Math.sin(a)*2.9);
+    c.userData.orbitAngle = a;
+    c.userData.orbitRadius = 2.9;
+    c.userData.orbitSpeed = 0.4 + i*0.05;
+    c.userData.orbitYBase = 3.2;
+    centre.add(c);
+  }
+
+  /* Inner glow point light */
+  const coreLight = new THREE.PointLight(PURPLE, 1.4, 32, 2);
+  coreLight.position.set(0, 3.5, 0);
+  centre.add(coreLight);
+  const limeLight = new THREE.PointLight(LIME, 0.9, 20, 2);
+  limeLight.position.set(0, 1.2, 0);
+  centre.add(limeLight);
+
+  vibeWorldGroup.add(centre);
+
+  /* ---------- Floating towers around the arena ---------- */
+  const towerPositions = [
+    [-26, 0, -20, 8], [-24, 0, 22, 10], [25, 0, -22, 9], [23, 0, 20, 11],
+    [-32, 0, 0, 7], [33, 0, 0, 9], [0, 0, -32, 12], [0, 0, 32, 10]
+  ];
+  for(const [x,_,z,h] of towerPositions){
+    const t = new THREE.Group();
+    t.position.set(x, 0, z);
+
+    /* stone base */
+    const base = mkEdgeBox(3.6, 1.4, 3.6, stoneDarkMat, 0x0A0A0A);
+    base.position.y = 0.7;
+    t.add(base);
+
+    /* stacked dark blocks */
+    for(let i=0;i<3;i++){
+      const s = 2.8 - i*0.5;
+      const b = mkEdgeBox(s, h*0.28, s, darkMat, 0x0A0A0A);
+      b.position.y = 1.4 + i*(h*0.28) + i*0.1;
+      t.add(b);
+    }
+
+    /* glowing lime cap on top */
+    const cap = mkEdgeBox(2.0, 0.6, 2.0, limeGlowMat, 0x0A0A0A);
+    cap.position.y = 1.4 + h*0.84 + 0.6;
+    t.add(cap);
+
+    /* purple vertical beam */
+    const beam = mkEdgeBox(0.4, 5 + h*0.3, 0.4, purpleGlowMat, 0x0A0A0A);
+    beam.position.y = 1.4 + h*0.84 + 3.5;
+    t.add(beam);
+
+    vibeWorldGroup.add(t);
+  }
+
+  /* ---------- Floating platforms in the distance (decorative, no collision) ---------- */
+  const floatPlatforms = [
+    [-22, 14, -8], [22, 16, 6], [-8, 18, 22], [8, 15, -22],
+    [-28, 20, 12], [30, 19, -10]
+  ];
+  for(const [x,y,z] of floatPlatforms){
+    const p = new THREE.Group();
+    p.position.set(x, y, z);
+    const base = mkEdgeBox(4.2, 0.6, 4.2, stoneMat, 0x0A0A0A);
+    p.add(base);
+    const under = mkEdgeBox(3.4, 1.2, 3.4, stoneDarkMat, 0x0A0A0A);
+    under.position.y = -0.9;
+    p.add(under);
+    const glow = mkEdgeBox(4.6, 0.14, 4.6, limeGlowMat, 0x0A0A0A);
+    glow.position.y = 0.35;
+    p.add(glow);
+    vibeWorldGroup.add(p);
+  }
+
+  /* ---------- Corner obelisks with Vibe glyphs ---------- */
+  for(const [x,z] of [[-19,-19],[19,-19],[-19,19],[19,19]]){
+    const o = new THREE.Group();
+    o.position.set(x, 0, z);
+    const pole = mkEdgeBox(1.4, 6, 1.4, stoneDarkMat, 0x0A0A0A);
+    pole.position.y = 3;
+    o.add(pole);
+    const glowTop = mkEdgeBox(1.7, 0.4, 1.7, purpleGlowMat, 0x0A0A0A);
+    glowTop.position.y = 6.2;
+    o.add(glowTop);
+    /* V glyph */
+    const gLeft = mkEdgeBox(0.22, 0.9, 0.22, limeGlowMat, 0x0A0A0A); gLeft.position.set(-0.3, 4.6, 0.75); gLeft.rotation.z =  0.3; o.add(gLeft);
+    const gRight = mkEdgeBox(0.22, 0.9, 0.22, limeGlowMat, 0x0A0A0A); gRight.position.set( 0.3, 4.6, 0.75); gRight.rotation.z = -0.3; o.add(gRight);
+    const gDot = mkEdgeBox(0.24, 0.24, 0.24, limeGlowMat, 0x0A0A0A); gDot.position.set(0, 4.0, 0.75); o.add(gDot);
+    vibeWorldGroup.add(o);
+  }
+
+  /* ---------- Atmospheric floating voxel motes ---------- */
+  const moteColors = [LIME, PURPLE, PURPLE_DEEP, LIME];
+  for(let i=0;i<48;i++){
+    const m = new THREE.Group();
+    const angle = rand(0,TAU);
+    const r = rand(18, 34);
+    const y = rand(4, 22);
+    m.position.set(Math.cos(angle)*r, y, Math.sin(angle)*r);
+    const cubeMat = new THREE.MeshBasicMaterial({color:moteColors[i%4]});
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), cubeMat);
+    m.add(cube);
+    m.userData.mote = true;
+    m.userData.moteAngle = angle;
+    m.userData.moteRadius = r;
+    m.userData.moteSpeed = rand(0.05, 0.12) * (i%2 ? 1 : -1);
+    m.userData.moteYBase = y;
+    m.userData.moteYPhase = rand(0, TAU);
+    vibeWorldGroup.add(m);
+  }
+}
+buildVibeWorld();
+
+/* Clouds (all maps) */
 cloudGroup = new THREE.Group();
 scene.add(cloudGroup);
 for(let i=0;i<8;i++){
@@ -650,7 +824,7 @@ for(let i=0;i<8;i++){
 }
 
 function applyMap(mapId){
-  const m = MAPS[mapId] || MAPS.classic;
+  const m = MAPS[mapId] || MAPS.vibeworld;
   scene.background = new THREE.Color(m.sky);
   if(scene.fog){ scene.fog.color = new THREE.Color(m.sky); scene.fog.near = m.fogNear; scene.fog.far = m.fogFar; }
   else scene.fog = new THREE.Fog(m.sky, m.fogNear, m.fogFar);
@@ -659,7 +833,8 @@ function applyMap(mapId){
   hemi.intensity = m.hemiIntensity;
   sun.color = new THREE.Color(m.sunColor);
   sun.intensity = m.sunIntensity;
-  if(lanternGroup) lanternGroup.visible = m.lanterns;
+  if(lanternGroup) lanternGroup.visible = !!m.lanterns;
+  if(vibeWorldGroup) vibeWorldGroup.visible = !!m.vibeWorld;
   if(cloudGroup){
     cloudGroup.children.forEach(c => {
       if(c.material){
@@ -669,12 +844,16 @@ function applyMap(mapId){
         c.material.needsUpdate = true;
       }
     });
+    cloudGroup.visible = !m.vibeWorld;
   }
 }
 
 function groundYAt(x,z,fromY){ let best=-Infinity; for(let i=0;i<platforms.length;i++){ const p=platforms[i]; if(x>p.minX&&x<p.maxX&&z>p.minZ&&z<p.maxZ){ if(p.top<=fromY+0.61 && p.top>best) best=p.top; } } return best; }
 function distFromCenter(x,z){ return Math.hypot(x,z); }
 
+/* ============================================================
+   HAZARDS
+   ============================================================ */
 const hazards={ spinBar:null, spinSpeed:0.62, pads:[], spinEnabled:true, padsEnabled:true };
 function buildHazards(){
   const grp=new THREE.Group();
@@ -701,27 +880,112 @@ function applyHazardsForDifficulty(diff){
   for(const p of hazards.pads){ p.grp.visible = hazards.padsEnabled; if(!hazards.padsEnabled){ p.active=false; p.phase=false; p.timer=1.5; p.grp.position.y=-1.4; } }
 }
 
-const POWER_TYPES=[{id:'spark', name:'SPARK BOOST', color:0xffd34d, dur:11},{id:'power', name:'POWER', color:0xff5a5a, dur:11},{id:'shield',name:'SHIELD', color:0x5ad1ff, dur:0},{id:'dash',  name:'DASH', color:0x7dff9e, dur:14}];
+/* ============================================================
+   POWERUPS — Viber voxel redesign
+   ============================================================ */
+const POWER_TYPES=[
+  {id:'spark',  name:'SPARK BOOST', color:0xDFF902, dur:11, core:0xDFF902, shell:0x8a9a00},
+  {id:'power',  name:'POWER',       color:0xA56BFF, dur:11, core:0xBFA4FF, shell:0x5a3aa0},
+  {id:'shield', name:'SHIELD',      color:0x5CFFE7, dur:0,  core:0x9FFFF0, shell:0x2a8a80},
+  {id:'dash',   name:'DASH',        color:0xFFD34D, dur:14, core:0xFFF2A0, shell:0xa08020}
+];
 const powerups=[];
 const POWER_SPOTS=[[0,0.9,0],[ -14,2.9,-14],[14,4.6,-14],[-14,2.3,14],[14,5.5,14],[0,4.5,-19],[0,4.5,19],[-9,1,-9],[9,1,-9],[-9,1,9],[9,1,9]];
 let powerSpawnTimer=4;
+
+function buildPowerupMesh(type){
+  const g = new THREE.Group();
+
+  /* dark stone base (voxel pedestal) */
+  const baseMat = new THREE.MeshLambertMaterial({color:0x1a1a28});
+  const baseTop = new THREE.MeshLambertMaterial({color:type.shell});
+  const baseOuter = mkEdgeBox(1.6, 0.22, 1.6, baseMat, 0x0A0A0A);
+  baseOuter.position.y = -0.7;
+  g.add(baseOuter);
+  const baseInner = mkEdgeBox(1.1, 0.14, 1.1, baseTop, 0x0A0A0A);
+  baseInner.position.y = -0.55;
+  g.add(baseInner);
+
+  /* outer energy shell — hollow voxel frame */
+  const shellMat = new THREE.MeshBasicMaterial({color:type.shell, transparent:true, opacity:0.32});
+  const shellGeo = new THREE.BoxGeometry(1.15, 1.15, 1.15);
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+  shell.castShadow = false;
+  g.add(shell);
+
+  /* corner posts of shell (black outlines, glowing edges) */
+  const postMat = new THREE.MeshBasicMaterial({color:type.color});
+  const posts = [[-0.55,-0.55],[0.55,-0.55],[-0.55,0.55],[0.55,0.55]];
+  for(const [px,pz] of posts){
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.15, 0.12), postMat);
+    p.position.set(px, 0, pz);
+    g.add(p);
+  }
+
+  /* glowing inner core */
+  const coreMat = new THREE.MeshBasicMaterial({color:type.core});
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), coreMat);
+  core.castShadow = false;
+  g.add(core);
+  /* second smaller core for depth */
+  const coreInner = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({color:0xffffff}));
+  coreInner.castShadow = false;
+  g.add(coreInner);
+
+  /* type-specific flourish */
+  if(type.id==='spark'){
+    /* outer sparking cubes */
+    for(let i=0;i<6;i++){
+      const a = (i/6)*TAU;
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.18,0.18), coreMat);
+      s.position.set(Math.cos(a)*0.95, Math.sin(a*1.7)*0.5, Math.sin(a)*0.95);
+      g.add(s);
+    }
+  } else if(type.id==='power'){
+    /* heavier ring beneath */
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.10, 4, 12), coreMat);
+    ring.rotation.x = Math.PI/2;
+    ring.position.y = -0.5;
+    g.add(ring);
+  } else if(type.id==='shield'){
+    /* extra transparent shell layer */
+    const outerShell = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshBasicMaterial({color:type.color, transparent:true, opacity:0.14}));
+    outerShell.castShadow = false;
+    g.add(outerShell);
+  } else if(type.id==='dash'){
+    /* directional arrow chevrons */
+    for(let i=0;i<3;i++){
+      const chev = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.5), coreMat);
+      chev.position.set(0, 0.4 - i*0.35, -0.55 - i*0.12);
+      g.add(chev);
+    }
+  }
+
+  /* point light for local glow */
+  const light = new THREE.PointLight(type.color, 0.7, 8, 2);
+  g.add(light);
+
+  return g;
+}
+
 function spawnPowerup(){
   const t=POWER_TYPES[randi(0,POWER_TYPES.length-1)];
   const spot=POWER_SPOTS[randi(0,POWER_SPOTS.length-1)];
-  const mat=new THREE.MeshLambertMaterial({color:t.color,emissive:t.color,emissiveIntensity:0.45});
-  const g=new THREE.Group();
-  const cube=mkBox(1.0,1.0,1.0,mat); g.add(cube);
-  const ring=mkBox(1.45,0.14,1.45,new THREE.MeshLambertMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:0.3})); g.add(ring);
-  g.position.set(spot[0],spot[1]+1.4,spot[2]); scene.add(g);
-  powerups.push({type:t,pos:new THREE.Vector3(spot[0],spot[1]+1.4,spot[2]),mesh:g,life:26,spin:rand(1,3)});
+  const g = buildPowerupMesh(t);
+  g.position.set(spot[0], spot[1]+1.4, spot[2]);
+  scene.add(g);
+  powerups.push({type:t,pos:new THREE.Vector3(spot[0],spot[1]+1.4,spot[2]),mesh:g,life:26,spin:rand(0.8,1.6)});
 }
 
+/* ============================================================
+   FX / PARTICLES
+   ============================================================ */
 const particles=[];
 const pGeo=new THREE.BoxGeometry(0.26,0.26,0.26);
 const pMatCache={};
 function pmat(color,emissive){ const k=color+'_'+(emissive?1:0); if(!pMatCache[k]) pMatCache[k]=new THREE.MeshLambertMaterial({color:color, emissive: emissive?color:0x000000, emissiveIntensity: emissive?0.6:0}); return pMatCache[k]; }
 function burst(x,y,z,color,count,speed,life,size,emissive){
-  if(particles.length>260) return;
+  if(particles.length>400) return;
   const mat=pmat(color,emissive!==false);
   for(let i=0;i<count;i++){
     const m=new THREE.Mesh(pGeo,mat); m.position.set(x,y,z);
@@ -741,12 +1005,87 @@ function impactRing(x,y,z,color,scale){
   m2.position.set(x,y,z); scene.add(m2);
   fxList.push({m:m2,life:0.22,max:0.22,type:'star',sc:scale||1});
 }
+
+/* Ability activation ring — glows beneath the Viber */
+function spawnAbilityRing(f){
+  const ring = new THREE.Group();
+  ring.position.set(f.pos.x, f.pos.y + 0.08, f.pos.z);
+  const col = f.def.colors.accent;
+  const geo = new THREE.RingGeometry(1.6, 2.4, 24);
+  const mat = new THREE.MeshBasicMaterial({color:col, side:THREE.DoubleSide, transparent:true, opacity:0.85});
+  const disc = new THREE.Mesh(geo, mat);
+  disc.rotation.x = -Math.PI/2;
+  ring.add(disc);
+  /* inner core disc */
+  const innerMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.DoubleSide, transparent:true, opacity:0.9});
+  const inner = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.35, 24), innerMat);
+  inner.rotation.x = -Math.PI/2;
+  inner.position.y = 0.02;
+  ring.add(inner);
+  /* orbiting glyph cubes */
+  for(let i=0;i<8;i++){
+    const a = (i/8)*TAU;
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), new THREE.MeshBasicMaterial({color:col}));
+    c.position.set(Math.cos(a)*2.0, 0.15, Math.sin(a)*2.0);
+    c.userData.startAngle = a;
+    ring.add(c);
+  }
+  /* point light */
+  const light = new THREE.PointLight(col, 1.6, 12, 2);
+  light.position.set(0, 0.3, 0);
+  ring.add(light);
+  scene.add(ring);
+  fxList.push({m:ring, life:0.8, max:0.8, type:'abilityRing', sc:1, col:col});
+
+  /* chunky geometric particles blasting outward */
+  for(let i=0;i<16;i++){
+    const a = (i/16)*TAU;
+    const em = new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4), new THREE.MeshBasicMaterial({color:col}));
+    em.position.set(f.pos.x + Math.cos(a)*1.2, f.pos.y + 0.3 + rand(0,0.6), f.pos.z + Math.sin(a)*1.2);
+    scene.add(em);
+    fxList.push({m:em, life:0.5, max:0.5, type:'abilityChip', sc:1,
+                 vx:Math.cos(a)*7, vy:rand(1.5,4), vz:Math.sin(a)*7});
+  }
+}
+
 function updateFX(dt){
   for(let i=fxList.length-1;i>=0;i--){
     const f=fxList[i]; f.life-=dt; const t=1-f.life/f.max;
     if(f.type==='ring'){ f.m.scale.setScalar((f.sc||1)*(1+t*2.2)); f.m.material.opacity=Math.max(0,0.9*(1-t)); f.m.lookAt(camera.position); }
-    else { f.m.scale.setScalar((f.sc||1)*(1+t*1.6)); f.m.rotation.x+=dt*14; f.m.rotation.y+=dt*10; f.m.material.opacity=Math.max(0,0.85*(1-t)); }
-    if(f.life<=0){ scene.remove(f.m); f.m.geometry.dispose(); f.m.material.dispose(); fxList.splice(i,1); }
+    else if(f.type==='star'){ f.m.scale.setScalar((f.sc||1)*(1+t*1.6)); f.m.rotation.x+=dt*14; f.m.rotation.y+=dt*10; f.m.material.opacity=Math.max(0,0.85*(1-t)); }
+    else if(f.type==='abilityRing'){
+      const s = 1 + t*0.85;
+      f.m.scale.setScalar(s);
+      f.m.children.forEach(ch => {
+        if(ch.userData.startAngle!==undefined){
+          ch.position.x = Math.cos(ch.userData.startAngle + t*5) * (2.0 + t*1.2);
+          ch.position.z = Math.sin(ch.userData.startAngle + t*5) * (2.0 + t*1.2);
+          ch.rotation.y += dt*8;
+        }
+      });
+      f.m.children.forEach(ch => {
+        if(ch.material && ch.material.transparent !== undefined){
+          if(ch.material.opacity !== undefined) ch.material.opacity = Math.max(0, (1-t)*1.0);
+        }
+      });
+    }
+    else if(f.type==='abilityChip'){
+      f.m.position.x += f.vx*dt;
+      f.m.position.y += f.vy*dt;
+      f.m.position.z += f.vz*dt;
+      f.vy -= 12*dt;
+      f.m.rotation.x += dt*10;
+      f.m.rotation.y += dt*8;
+      f.m.scale.setScalar(1-t*0.5);
+      if(f.m.material) f.m.material.opacity = Math.max(0,1-t);
+    }
+    if(f.life<=0){
+      scene.remove(f.m);
+      if(f.m.geometry) f.m.geometry.dispose();
+      if(f.m.material && !Array.isArray(f.m.material)) f.m.material.dispose();
+      if(f.m.children) f.m.children.forEach(ch => { if(ch.geometry) ch.geometry.dispose(); if(ch.material) ch.material.dispose(); });
+      fxList.splice(i,1);
+    }
   }
 }
 function updateParticles(dt){
@@ -760,6 +1099,9 @@ function updateParticles(dt){
   }
 }
 
+/* ============================================================
+   FIGHTER
+   ============================================================ */
 const CFG={ gravity:-44, fallY:-38, stocks:3, matchTime:180 };
 const ATTACKS={
   quick:{ startup:0.07, active:0.10, recovery:0.17, dmg:8,  kb:10.5, range:2.5, arc:1.15, up:0.38, hitstop:0.05, stun:0.22, shake:0.28, sound:'hitLight' },
@@ -878,7 +1220,7 @@ const touch={stickActive:false,sx:0,sz:0,id:null};
   });
 })();
 
-const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'hard', map:'classic', winner:null, victoryPhase:null, victoryT:0 };
+const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'hard', map:'vibeworld', winner:null, victoryPhase:null, victoryT:0 };
 createFighters();
 buildHazards();
 applyHazardsForDifficulty(Game.difficulty);
@@ -917,8 +1259,8 @@ function stepFighter(f,dt,ctrl){
       f.health=f.maxHealth; f.state='active'; f.invuln=1.8;
       f.model.bodyPivot.rotation.set(0,0,0);
       f.group.visible=true;
-      impactRing(f.pos.x,f.pos.y+1.2,f.pos.z,0xffffff,0.8);
-      burst(f.pos.x,f.pos.y+1,f.pos.z,0xffffff,10,7,0.5,0.8);
+      impactRing(f.pos.x,f.pos.y+1.2,f.pos.z,0xDFF902,0.8);
+      burst(f.pos.x,f.pos.y+1,f.pos.z,0xA56BFF,10,7,0.5,0.8);
     }
     return;
   }
@@ -971,14 +1313,20 @@ function stepFighter(f,dt,ctrl){
     f.dashT=0.22; f.dashCd=f.dashBuff>0?0.55:1.05; f.moveLock=0.16;
     f.facing=Math.atan2(f.dashVecX,f.dashVecZ);
     SFX.dash();
-    burst(f.pos.x,f.pos.y+0.8,f.pos.z,f.def.colors.accent,7,6,0.35,0.75);
+    /* Viber dash trail — angular chips */
+    for(let i=0;i<6;i++){
+      const chip = new THREE.Mesh(new THREE.BoxGeometry(0.35,0.35,0.35), new THREE.MeshBasicMaterial({color:f.def.colors.accent}));
+      chip.position.set(f.pos.x - f.dashVecX*(i*0.5), f.pos.y + 0.8, f.pos.z - f.dashVecZ*(i*0.5));
+      scene.add(chip);
+      fxList.push({m:chip, life:0.35, max:0.35, type:'abilityChip', sc:1, vx:0, vy:1.5, vz:0});
+    }
   }
 
   if(ctrl.jumpPressed && canAct && f.moveLock<=0){
     if(f.onGround||f.coyote>0){
       f.vy=f.def.jump; f.onGround=false; f.coyote=0; f.jumpsLeft=1;
       SFX.jump();
-      burst(f.pos.x,f.pos.y+0.1,f.pos.z,0xffffff,6,4,0.3,0.7,false);
+      burst(f.pos.x,f.pos.y+0.1,f.pos.z,0xDFF902,6,4,0.3,0.7,false);
     } else if(f.jumpsLeft>0){
       f.vy=f.def.jump*0.92; f.jumpsLeft--;
       f.vx*=0.75; f.vz*=0.75;
@@ -1005,7 +1353,7 @@ function stepFighter(f,dt,ctrl){
   f.pos.x+=f.vx*dt; f.pos.z+=f.vz*dt; f.pos.y+=f.vy*dt;
   const gy=groundYAt(f.pos.x,f.pos.z,Math.max(prevY,f.pos.y)+1);
   if(f.vy<=0 && prevY>=gy-0.35 && f.pos.y<=gy){
-    if(!f.onGround && f.vy<-6){ SFX.land(); burst(f.pos.x,gy+0.1,f.pos.z,0xe8dcc0,5,4,0.25,0.6,false); }
+    if(!f.onGround && f.vy<-6){ SFX.land(); burst(f.pos.x,gy+0.1,f.pos.z,0xDFF902,5,4,0.25,0.6,false); }
     f.pos.y=gy; f.vy=0; f.onGround=true; f.jumpsLeft=2; f.coyote=0.12;
   } else {
     if(f.onGround) f.coyote=0.12;
@@ -1059,8 +1407,8 @@ function updateEmoteTransform(f, dt){
   applyEmotePose(f, t);
   if(!f._emoteBurstDone && t > 0.5){
     f._emoteBurstDone = true;
-    const colorsMap = { miner:[0xd23a2a,0x8b5a3a,0xffd34d], moss:[0x8fffaa,0x2a3035,0xffffff], volt:[0xffe880,0x2a8040,0xfff0a0], phantom:[0x4ad0c0,0xb0b0b0,0xffffff] };
-    const cols = colorsMap[f.def.id] || [0xffd34d];
+    const colorsMap = { miner:[0xd23a2a,0xDFF902,0xA56BFF], moss:[0x8fffaa,0xDFF902,0xA56BFF], volt:[0xffe880,0xDFF902,0xA56BFF], phantom:[0x4ad0c0,0xDFF902,0xA56BFF] };
+    const cols = colorsMap[f.def.id] || [0xDFF902,0xA56BFF];
     for(let i=0;i<22;i++){ burst(f.pos.x + rand(-1.2,1.2), f.pos.y + 1.5 + rand(0,1.5), f.pos.z + rand(-1.2,1.2), cols[i%cols.length], 2, 9, 0.9, 1.1, true); }
     impactRing(f.pos.x, f.pos.y+1.2, f.pos.z, cols[0], 1.4);
   }
@@ -1170,9 +1518,10 @@ function applyHit(a,o,atk){
   Game.shake=Math.max(Game.shake,atk.shake+(dmg>12?0.2:0));
   const hy=(a.pos.y+o.pos.y)/2+1.4;
   const hx=(a.pos.x+o.pos.x)/2, hz=(a.pos.z+o.pos.z)/2;
-  impactRing(hx,hy,hz,atk.dmg>12?0xffd34d:0xffffff,atk.dmg>12?1.3:0.9);
-  burst(hx,hy,hz,atk.dmg>12?0xffb84d:0xffffff,atk.dmg>12?16:10,atk.dmg>12?12:8,0.4,atk.dmg>12?1.1:0.85);
-  if(shielded) burst(hx,hy,hz,0x5ad1ff,8,7,0.35,0.8);
+  const accent = atk.dmg>12 ? 0xDFF902 : 0xA56BFF;
+  impactRing(hx,hy,hz,accent,atk.dmg>12?1.3:0.9);
+  burst(hx,hy,hz,accent,atk.dmg>12?16:10,atk.dmg>12?12:8,0.4,atk.dmg>12?1.1:0.85,true);
+  if(shielded) burst(hx,hy,hz,0x5CFFE7,8,7,0.35,0.8,true);
   if(atk.sound==='hitHeavy') SFX.hitHeavy(); else SFX.hitLight();
   if(o.health<=0){ o.health=0; koFighter(o,a,'ko'); }
 }
@@ -1181,11 +1530,26 @@ function koFighter(f,by,reason){
   f.stocks--; f.state='ko'; f.koT=1.5;
   f.vx=rand(-8,8); f.vz=rand(-8,8); f.vy=26;
   f.hitSet.clear();
-  burst(f.pos.x,f.pos.y+1.2,f.pos.z,0xffd34d,24,14,0.9,1.2);
-  impactRing(f.pos.x,f.pos.y+1.2,f.pos.z,0xffd34d,1.6);
+
+  /* Dramatic lime + purple impact burst */
+  const LIME = 0xDFF902;
+  const PURPLE = 0xA56BFF;
+  burst(f.pos.x, f.pos.y+1.2, f.pos.z, LIME, 30, 16, 1.1, 1.4, true);
+  burst(f.pos.x, f.pos.y+1.2, f.pos.z, PURPLE, 24, 13, 1.0, 1.2, true);
+  /* chunky geometric ring shards */
+  for(let i=0;i<14;i++){
+    const a = (i/14)*TAU;
+    const shard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color: i%2 ? LIME : PURPLE}));
+    shard.position.set(f.pos.x, f.pos.y+1.2, f.pos.z);
+    scene.add(shard);
+    fxList.push({m:shard, life:0.9, max:0.9, type:'abilityChip', sc:1,
+      vx:Math.cos(a)*11, vy:rand(2,6), vz:Math.sin(a)*11});
+  }
+  impactRing(f.pos.x,f.pos.y+1.2,f.pos.z,LIME,1.8);
+  impactRing(f.pos.x,f.pos.y+1.2,f.pos.z,PURPLE,1.4);
   SFX.ko();
-  Game.shake=0.9;
-  Game.hitStop=Math.max(Game.hitStop,0.14);
+  Game.shake=1.1;
+  Game.hitStop=Math.max(Game.hitStop,0.16);
   if(by&&by!==f){ by.kos++; if(by.isPlayer) Save.kos++; }
   announce('KNOCKOUT!',1.1);
   if(f.isPlayer) Game.playerSurvived=Math.max(Game.playerSurvived, Game.matchTime);
@@ -1196,7 +1560,8 @@ function koByFall(f){
   f.vy=0; f.vx=0; f.vz=0;
   SFX.fall();
   announce('FALL!',0.9,'small');
-  burst(f.pos.x,Math.max(f.pos.y,CFG.fallY+2),f.pos.z,0x9aa3ad,14,8,0.7,1);
+  burst(f.pos.x,Math.max(f.pos.y,CFG.fallY+2),f.pos.z,0xDFF902,16,9,0.8,1.1,true);
+  burst(f.pos.x,Math.max(f.pos.y,CFG.fallY+2),f.pos.z,0xA56BFF,12,7,0.8,1.0,true);
   if(f.isPlayer) Game.playerSurvived=Math.max(Game.playerSurvived, Game.matchTime);
 }
 function useAbility(f){
@@ -1205,18 +1570,22 @@ function useAbility(f){
   const fx=Math.sin(f.facing), fz=Math.cos(f.facing);
   f.hitSet.clear();
   SFX.ability();
+
+  /* Viber-branded ability activation ring */
+  spawnAbilityRing(f);
+
   switch(f.def.id){
     case 'miner': case 'moss':{ f.vy=-6; f.abilityActive='smash'; f.abilityT=1.2; f.moveLock=0.2; break; }
     case 'volt':{
-      burst(f.pos.x,f.pos.y+1,f.pos.z,0xff6fc0,12,6,0.45,0.9);
+      burst(f.pos.x,f.pos.y+1,f.pos.z,f.def.colors.accent,12,6,0.45,0.9);
       const gx=groundYAt(f.pos.x+fx*11,f.pos.z+fz*11,f.pos.y+8);
       f.pos.x+=fx*11; f.pos.z+=fz*11;
       if(gx!==-Infinity && gx>f.pos.y-6) f.pos.y=Math.max(f.pos.y,gx);
       f.vx=fx*17; f.vz=fz*17;
       f.abilityActive='flash'; f.abilityT=0.3;
       f.invuln=Math.max(f.invuln,0.45);
-      burst(f.pos.x,f.pos.y+1,f.pos.z,0xff6fc0,16,7,0.5,0.9);
-      impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,0xff6fc0,1.1);
+      burst(f.pos.x,f.pos.y+1,f.pos.z,f.def.colors.accent,16,7,0.5,0.9);
+      impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,f.def.colors.accent,1.1);
       for(const o of fighters){
         if(o===f||o.state!=='active') continue;
         const d=Math.hypot(o.pos.x-f.pos.x,o.pos.z-f.pos.z);
@@ -1227,8 +1596,8 @@ function useAbility(f){
     }
     case 'phantom':{
       f.phaseT=2.0; f.invuln=Math.max(f.invuln,2.0); f.speedBuff=Math.max(f.speedBuff,2.0);
-      burst(f.pos.x,f.pos.y+1,f.pos.z,0x5ff0d8,20,8,0.8,1);
-      impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,0x5ff0d8,1.4);
+      burst(f.pos.x,f.pos.y+1,f.pos.z,f.def.colors.accent,20,8,0.8,1);
+      impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,f.def.colors.accent,1.4);
       Game.shake=Math.max(Game.shake,0.25);
       break;
     }
@@ -1239,9 +1608,9 @@ function minerSmash(f){
   Game.shake=Math.max(Game.shake,1.0);
   Game.hitStop=Math.max(Game.hitStop,0.09);
   SFX.hitHeavy(); SFX.noise(0.4,0.4,200,0.7);
-  impactRing(f.pos.x,f.pos.y+0.3,f.pos.z,0x4aa3ff,2.2);
-  burst(f.pos.x,f.pos.y+0.4,f.pos.z,0x8ecbff,26,15,0.7,1.2);
-  burst(f.pos.x,f.pos.y+0.4,f.pos.z,0xe6d5a8,20,12,0.6,1.0,false);
+  impactRing(f.pos.x,f.pos.y+0.3,f.pos.z,0xDFF902,2.2);
+  burst(f.pos.x,f.pos.y+0.4,f.pos.z,0xDFF902,26,15,0.7,1.2);
+  burst(f.pos.x,f.pos.y+0.4,f.pos.z,0xA56BFF,20,12,0.7,1.0,true);
   for(const o of fighters){
     if(o===f||o.state!=='active') continue;
     const dx=o.pos.x-f.pos.x, dz=o.pos.z-f.pos.z;
@@ -1256,7 +1625,7 @@ function minerSmash(f){
       if(f.isPlayer) Save.dmgDealt+=16;
       if(o.isPlayer) Save.dmgTaken+=16;
       o.hitstun=Math.max(o.hitstun,0.4); o.moveLock=Math.max(o.moveLock,0.35); o.flash=0.16;
-      burst(o.pos.x,o.pos.y+1.2,o.pos.z,0xffb84d,10,9,0.45,1);
+      burst(o.pos.x,o.pos.y+1.2,o.pos.z,0xA56BFF,10,9,0.45,1);
       if(o.health<=0){ o.health=0; koFighter(o,f,'ko'); }
     }
   }
@@ -1286,7 +1655,7 @@ function checkHazards(f,dt){
         f.hitstun=0.4; f.moveLock=0.35; f.flash=0.16; f.hazardCd=1.0;
         Game.shake=Math.max(Game.shake,0.5);
         SFX.spike();
-        burst(f.pos.x,f.pos.y+1.2,f.pos.z,0xff8b3d,12,9,0.5,1);
+        burst(f.pos.x,f.pos.y+1.2,f.pos.z,0xDFF902,12,9,0.5,1);
         if(f.health<=0){ f.health=0; koFighter(f,null,'hazard'); }
       }
     }
@@ -1307,7 +1676,7 @@ function checkHazards(f,dt){
         f.hitstun=0.35; f.moveLock=0.3; f.flash=0.16; f.hazardCd=0.9;
         Game.shake=Math.max(Game.shake,0.45);
         SFX.spike();
-        burst(f.pos.x,f.pos.y+0.4,f.pos.z,0xff5a3a,14,10,0.5,1);
+        burst(f.pos.x,f.pos.y+0.4,f.pos.z,0xA56BFF,14,10,0.5,1);
         if(f.health<=0){ f.health=0; koFighter(f,null,'hazard'); }
       }
     }
@@ -1500,7 +1869,7 @@ function startMatch(charIndex, tutorial){
   powerups.length=0;
   for(const p of particles) scene.remove(p.m);
   particles.length=0;
-  for(const f of fxList) scene.remove(f.m);
+  for(const f of fxList){ scene.remove(f.m); }
   fxList.length=0;
   powerSpawnTimer=4;
   buildCards();
@@ -1606,7 +1975,7 @@ function updateWorld(dt){
     for(let i=0;i<hazards.pads.length;i++){
       const p=hazards.pads[i];
       p.timer-=sdt;
-      if(p.timer<=0){ p.phase=!p.phase; p.timer=p.phase?1.9:2.4; if(p.phase){ p.active=true; burst(p.x,0.4,p.z,0xff5a3a,10,6,0.4,0.9); } else p.active=false; }
+      if(p.timer<=0){ p.phase=!p.phase; p.timer=p.phase?1.9:2.4; if(p.phase){ p.active=true; burst(p.x,0.4,p.z,0xDFF902,10,6,0.4,0.9); } else p.active=false; }
       const target=p.phase?0.55:-1.35;
       p.grp.position.y+=(target-p.grp.position.y)*Math.min(1,sdt*11);
     }
@@ -1664,7 +2033,7 @@ function updateWorld(dt){
   for(let i=powerups.length-1;i>=0;i--){
     const p=powerups[i];
     p.life-=sdt;
-    p.mesh.rotation.y+=sdt*1.6;
+    p.mesh.rotation.y+=sdt*p.spin;
     p.mesh.position.y=p.pos.y+Math.sin(Game.time*2+i)*0.22;
     if(p.life<=0){ scene.remove(p.mesh); powerups.splice(i,1); continue; }
     for(const f of fighters){
@@ -1681,6 +2050,27 @@ function updateWorld(dt){
     }
   }
   updateParticles(sdt); updateFX(dt); updateCamera(dt);
+
+  /* Vibe World animation */
+  if(vibeWorldGroup && vibeWorldGroup.visible){
+    const t = Game.time;
+    vibeWorldGroup.traverse(o => {
+      if(o.userData.mote){
+        const a = o.userData.moteAngle + t * o.userData.moteSpeed;
+        o.position.x = Math.cos(a) * o.userData.moteRadius;
+        o.position.z = Math.sin(a) * o.userData.moteRadius;
+        o.position.y = o.userData.moteYBase + Math.sin(t*1.2 + o.userData.moteYPhase)*0.8;
+        o.rotation.x += dt*1.5; o.rotation.y += dt*1.8;
+      } else if(o.userData.orbitAngle !== undefined){
+        const a = o.userData.orbitAngle + t * o.userData.orbitSpeed;
+        o.position.x = Math.cos(a) * o.userData.orbitRadius;
+        o.position.z = Math.sin(a) * o.userData.orbitRadius;
+        o.position.y = o.userData.orbitYBase + Math.sin(t*1.5 + a)*0.4;
+        o.rotation.x += dt*2; o.rotation.y += dt*2;
+      }
+    });
+  }
+
   if(Game.mode!=='menu') updateHUD();
   clearEdges();
   if(Tutorial.active) Tutorial.update(dt);
@@ -1871,7 +2261,6 @@ document.querySelectorAll('.diffbtn').forEach(b=>{
   });
 });
 
-/* Arena selector */
 document.querySelectorAll('.mapbtn').forEach(b=>{
   b.addEventListener('click',()=>{
     SFX.init(); SFX.resume(); SFX.click();
