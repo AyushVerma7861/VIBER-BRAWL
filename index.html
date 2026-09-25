@@ -220,15 +220,15 @@
     <div id="charGrid"></div>
     <div class="maplabel">ARENA</div>
     <div class="maprow" id="mapRow">
-      <button class="mapbtn sel" data-map="vibeworld">VIBE WORLD<br><span style="font-size:9px;">energy arena</span></button>
+      <button class="mapbtn" data-map="vibeworld">VIBE WORLD<br><span style="font-size:9px;">energy arena</span></button>
       <button class="mapbtn" data-map="classic">CLASSIC<br><span style="font-size:9px;">bright &amp; airy</span></button>
-      <button class="mapbtn" data-map="dungeon">DUNGEON<br><span style="font-size:9px;">lantern-lit</span></button>
+      <button class="mapbtn sel" data-map="dungeon">DUNGEON<br><span style="font-size:9px;">lantern-lit</span></button>
     </div>
     <div class="difflabel">DIFFICULTY</div>
     <div class="diffrow" id="diffRow">
       <button class="diffbtn" data-diff="easy">EASY<br><span style="font-size:9px;">no hazards</span></button>
-      <button class="diffbtn" data-diff="medium">MEDIUM<br><span style="font-size:9px;">spike pads</span></button>
-      <button class="diffbtn sel" data-diff="hard">HARD<br><span style="font-size:9px;">spikes + spin rod</span></button>
+      <button class="diffbtn sel" data-diff="medium">MEDIUM<br><span style="font-size:9px;">spike pads</span></button>
+      <button class="diffbtn" data-diff="hard">HARD<br><span style="font-size:9px;">spikes + spin rod</span></button>
     </div>
     <div class="row">
       <button class="btn green" id="btnFight" style="flex:2;">PLAY</button>
@@ -406,9 +406,6 @@ renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 
 const scene=new THREE.Scene();
 
-/* ============================================================
-   ARENA MAP PRESETS
-   ============================================================ */
 const MAPS = {
   vibeworld: {
     name:'VIBE WORLD',
@@ -464,8 +461,83 @@ function mkBox(w,h,d,mat,outline){ const g=new THREE.BoxGeometry(w,h,d); const m
 function mkEdgeBox(w,h,d,mat,outlineColor){ const g=new THREE.BoxGeometry(w,h,d); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; m.add(new THREE.LineSegments(edgeGeo(g), new THREE.LineBasicMaterial({color:outlineColor||0x0A0A0A}))); return m; }
 
 /* ============================================================
-   VIBER CHARACTERS — unchanged
+   CAMERA OBSTRUCTION FADE
+   Upper platforms fade to 50% opacity when they block the
+   camera's view of the focused Viber. Restores automatically.
    ============================================================ */
+const fadeableMeshes = [];
+const _fadeRaycaster = new THREE.Raycaster();
+const _fadeDir = new THREE.Vector3();
+const _fadeTarget = new THREE.Vector3();
+
+function registerFadeable(mesh){
+  if(!mesh || !mesh.material) return;
+  mesh.userData.baseOpacity = 1.0;
+  mesh.userData.targetOpacity = 1.0;
+  fadeableMeshes.push(mesh);
+}
+
+function setMeshOpacity(mesh, opacity){
+  if(mesh.material){
+    mesh.material.opacity = opacity;
+    mesh.material.transparent = opacity < 0.995;
+    mesh.material.depthWrite = opacity >= 0.995;
+    mesh.material.needsUpdate = true;
+  }
+  if(mesh.children){
+    for(const child of mesh.children){
+      if(child.material && child.isLineSegments){
+        child.material.opacity = opacity;
+        child.material.transparent = opacity < 0.995;
+        child.material.needsUpdate = true;
+      }
+    }
+  }
+}
+
+function updatePlatformFading(dt){
+  if(fadeableMeshes.length === 0) return;
+
+  let focus = null;
+  if(Game.victoryPhase === 'emote' || Game.victoryPhase === 'photo') focus = Game.winner;
+  else if(Game.mode === 'play' || Game.mode === 'tutorial') focus = player;
+
+  const camPos = camera.position;
+  const validFocus = focus && focus.state !== 'dead' && focus.state !== 'respawning';
+
+  if(validFocus){
+    _fadeTarget.set(focus.pos.x, focus.pos.y + 1.1, focus.pos.z);
+    _fadeDir.subVectors(_fadeTarget, camPos);
+    const dist = _fadeDir.length();
+    if(dist > 0.6){
+      _fadeDir.normalize();
+      _fadeRaycaster.set(camPos, _fadeDir);
+      _fadeRaycaster.far = dist - 0.4;
+      for(const mesh of fadeableMeshes){
+        const hits = _fadeRaycaster.intersectObject(mesh, false);
+        mesh.userData.targetOpacity = hits.length > 0 ? 0.5 : mesh.userData.baseOpacity;
+      }
+    } else {
+      for(const mesh of fadeableMeshes) mesh.userData.targetOpacity = mesh.userData.baseOpacity;
+    }
+  } else {
+    for(const mesh of fadeableMeshes) mesh.userData.targetOpacity = mesh.userData.baseOpacity;
+  }
+
+  const speed = 11;
+  const k = Math.min(1, speed * dt);
+  for(const mesh of fadeableMeshes){
+    const tgt = mesh.userData.targetOpacity;
+    const cur = mesh.material ? mesh.material.opacity : 1;
+    const delta = tgt - cur;
+    if(Math.abs(delta) < 0.005){
+      if(Math.abs(cur - tgt) > 0.001) setMeshOpacity(mesh, tgt);
+    } else {
+      setMeshOpacity(mesh, cur + delta * k);
+    }
+  }
+}
+
 const CHARACTERS=[
   { id:'miner', name:'CRIMSON MINER VIBER', tag:'HEAVY',
     desc:'A grizzled deep-mine brawler with a pickaxe and a grudge. Slow, but one good swing flattens the ring.',
@@ -583,9 +655,6 @@ function buildViber(def){
   return {root,bodyPivot,head,mats,legL,legR,armL,armR,visorMat,eyeMat};
 }
 
-/* ============================================================
-   ARENA GEOMETRY
-   ============================================================ */
 const platforms=[];
 const arenaGroup=new THREE.Group();
 scene.add(arenaGroup);
@@ -601,24 +670,29 @@ function slab(cx,cz,w,d,topY,h,color,outline,noPlatform){
   m.castShadow=true; m.receiveShadow=true;
   if(outline!==false) m.add(new THREE.LineSegments(edgeGeo(g),outlineMat));
   arenaGroup.add(m);
-  if(topY!==undefined && !noPlatform) platforms.push({minX:cx-w/2,maxX:cx+w/2,minZ:cz-d/2,maxZ:cz+d/2,top:topY});
+  if(topY!==undefined && !noPlatform){
+    platforms.push({minX:cx-w/2,maxX:cx+w/2,minZ:cz-d/2,maxZ:cz+d/2,top:topY});
+    /* Any platform above ground level becomes a candidate for camera fade */
+    if(topY >= 2.0) registerFadeable(m);
+  }
   return m;
 }
 function buildArena(){
   slab(0,0,34,34,0,1.1,0xe6d5a8);
   slab(0,0,30,30,-1.1,3.4,0xc4ad7d,true,true);
   slab(0,0,25,25,-4.5,4.0,0x9c8a66,true,true);
-  slab(-14,-14,11,11,1.9,1.0,0xdcc9a0);
-  slab( 14,-14,10,10,3.6,1.0,0xd2c096);
-  slab(-14, 14,10.5,10.5,1.3,0.9,0xe0cfa6);
-  slab( 14, 14,9.5,9.5,4.5,1.0,0xd6c398);
+  /* corner platforms — only the two lowest raised to clear the Viber's head;
+     the other two keep their original varied heights */
+  slab(-14,-14,11,11,3.5,1.0,0xdcc9a0);   /* was 1.9 → 3.5 */
+  slab( 14,-14,10,10,3.6,1.0,0xd2c096);   /* unchanged */
+  slab(-14, 14,10.5,10.5,3.5,0.9,0xe0cfa6); /* was 1.3 → 3.5 */
+  slab( 14, 14,9.5,9.5,4.5,1.0,0xd6c398);  /* unchanged */
   slab(0,-19,7,7,3.5,0.9,0xe6d5a8);
   slab(0, 19,7,7,3.5,0.9,0xe6d5a8);
   for(const p of [[-14,-14],[14,-14],[-14,14],[14,14]]) slab(p[0],p[1],3.2,3.2,-4.5,12,0x8b7a5a,true,true);
 }
 buildArena();
 
-/* Lanterns (dungeon map) */
 function buildLanterns(){
   lanternGroup = new THREE.Group();
   lanternGroup.visible = false;
@@ -645,9 +719,6 @@ function buildLanterns(){
 }
 buildLanterns();
 
-/* ============================================================
-   VIBE WORLD MAP — energy arena with central structure
-   ============================================================ */
 function buildVibeWorld(){
   vibeWorldGroup = new THREE.Group();
   vibeWorldGroup.visible = false;
@@ -656,7 +727,7 @@ function buildVibeWorld(){
   const LIME = 0xDFF902;
   const PURPLE = 0xA56BFF;
   const PURPLE_DEEP = 0x7B5CFF;
-  const STONE = 0xc8b88a;   // cream stone
+  const STONE = 0xc8b88a;
   const STONE_DARK = 0x6a5a3a;
   const DARK = 0x1a1a28;
 
@@ -667,37 +738,30 @@ function buildVibeWorld(){
   const purpleGlowMat = new THREE.MeshBasicMaterial({color:PURPLE});
   const purpleDeepMat = new THREE.MeshBasicMaterial({color:PURPLE_DEEP});
 
-  /* ---------- Central Vibe energy structure ---------- */
   const centre = new THREE.Group();
   centre.position.set(0, 0, 0);
 
-  /* Base plate under the ring */
   const basePlate = mkEdgeBox(7.2, 0.5, 7.2, stoneDarkMat, 0x0A0A0A);
   basePlate.position.set(0, 0.25, 0);
   centre.add(basePlate);
 
-  /* Platform ring (lime edge) */
   const ring = mkEdgeBox(6.4, 0.35, 6.4, new THREE.MeshLambertMaterial({color:0x5a4a2a}), 0x0A0A0A);
   ring.position.set(0, 0.6, 0);
   centre.add(ring);
 
-  /* Central V glyph made of voxels */
   const vLeftTop = mkEdgeBox(0.9, 2.2, 0.6, purpleGlowMat, 0x0A0A0A); vLeftTop.position.set(-0.9, 3.4, 0); vLeftTop.rotation.z =  0.32; centre.add(vLeftTop);
   const vRightTop = mkEdgeBox(0.9, 2.2, 0.6, purpleGlowMat, 0x0A0A0A); vRightTop.position.set( 0.9, 3.4, 0); vRightTop.rotation.z = -0.32; centre.add(vRightTop);
   const vBottom = mkEdgeBox(0.85, 0.85, 0.9, limeGlowMat, 0x0A0A0A); vBottom.position.set(0, 2.35, 0); centre.add(vBottom);
 
-  /* Purple beam core pillar */
   const corePillar = mkEdgeBox(0.9, 5.2, 0.9, purpleDeepMat, 0x0A0A0A);
   corePillar.position.set(0, 3.2, 0);
   centre.add(corePillar);
 
-  /* Halo crown around the V */
   const haloRing = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.14, 6, 20), purpleGlowMat);
   haloRing.position.set(0, 4.9, 0);
   haloRing.rotation.x = Math.PI/2;
   centre.add(haloRing);
 
-  /* Floating voxel energy cubes around the V (orbit) */
   const orbitMat = new THREE.MeshLambertMaterial({color:LIME, emissive:LIME, emissiveIntensity:0.8});
   for(let i=0;i<6;i++){
     const a = (i/6)*TAU;
@@ -710,7 +774,6 @@ function buildVibeWorld(){
     centre.add(c);
   }
 
-  /* Inner glow point light */
   const coreLight = new THREE.PointLight(PURPLE, 1.4, 32, 2);
   coreLight.position.set(0, 3.5, 0);
   centre.add(coreLight);
@@ -720,7 +783,6 @@ function buildVibeWorld(){
 
   vibeWorldGroup.add(centre);
 
-  /* ---------- Floating towers around the arena ---------- */
   const towerPositions = [
     [-26, 0, -20, 8], [-24, 0, 22, 10], [25, 0, -22, 9], [23, 0, 20, 11],
     [-32, 0, 0, 7], [33, 0, 0, 9], [0, 0, -32, 12], [0, 0, 32, 10]
@@ -729,12 +791,10 @@ function buildVibeWorld(){
     const t = new THREE.Group();
     t.position.set(x, 0, z);
 
-    /* stone base */
     const base = mkEdgeBox(3.6, 1.4, 3.6, stoneDarkMat, 0x0A0A0A);
     base.position.y = 0.7;
     t.add(base);
 
-    /* stacked dark blocks */
     for(let i=0;i<3;i++){
       const s = 2.8 - i*0.5;
       const b = mkEdgeBox(s, h*0.28, s, darkMat, 0x0A0A0A);
@@ -742,12 +802,10 @@ function buildVibeWorld(){
       t.add(b);
     }
 
-    /* glowing lime cap on top */
     const cap = mkEdgeBox(2.0, 0.6, 2.0, limeGlowMat, 0x0A0A0A);
     cap.position.y = 1.4 + h*0.84 + 0.6;
     t.add(cap);
 
-    /* purple vertical beam */
     const beam = mkEdgeBox(0.4, 5 + h*0.3, 0.4, purpleGlowMat, 0x0A0A0A);
     beam.position.y = 1.4 + h*0.84 + 3.5;
     t.add(beam);
@@ -755,7 +813,6 @@ function buildVibeWorld(){
     vibeWorldGroup.add(t);
   }
 
-  /* ---------- Floating platforms in the distance (decorative, no collision) ---------- */
   const floatPlatforms = [
     [-22, 14, -8], [22, 16, 6], [-8, 18, 22], [8, 15, -22],
     [-28, 20, 12], [30, 19, -10]
@@ -774,7 +831,6 @@ function buildVibeWorld(){
     vibeWorldGroup.add(p);
   }
 
-  /* ---------- Corner obelisks with Vibe glyphs ---------- */
   for(const [x,z] of [[-19,-19],[19,-19],[-19,19],[19,19]]){
     const o = new THREE.Group();
     o.position.set(x, 0, z);
@@ -784,14 +840,12 @@ function buildVibeWorld(){
     const glowTop = mkEdgeBox(1.7, 0.4, 1.7, purpleGlowMat, 0x0A0A0A);
     glowTop.position.y = 6.2;
     o.add(glowTop);
-    /* V glyph */
     const gLeft = mkEdgeBox(0.22, 0.9, 0.22, limeGlowMat, 0x0A0A0A); gLeft.position.set(-0.3, 4.6, 0.75); gLeft.rotation.z =  0.3; o.add(gLeft);
     const gRight = mkEdgeBox(0.22, 0.9, 0.22, limeGlowMat, 0x0A0A0A); gRight.position.set( 0.3, 4.6, 0.75); gRight.rotation.z = -0.3; o.add(gRight);
     const gDot = mkEdgeBox(0.24, 0.24, 0.24, limeGlowMat, 0x0A0A0A); gDot.position.set(0, 4.0, 0.75); o.add(gDot);
     vibeWorldGroup.add(o);
   }
 
-  /* ---------- Atmospheric floating voxel motes ---------- */
   const moteColors = [LIME, PURPLE, PURPLE_DEEP, LIME];
   for(let i=0;i<48;i++){
     const m = new THREE.Group();
@@ -813,7 +867,6 @@ function buildVibeWorld(){
 }
 buildVibeWorld();
 
-/* Clouds (all maps) */
 cloudGroup = new THREE.Group();
 scene.add(cloudGroup);
 for(let i=0;i<8;i++){
@@ -824,7 +877,7 @@ for(let i=0;i<8;i++){
 }
 
 function applyMap(mapId){
-  const m = MAPS[mapId] || MAPS.vibeworld;
+  const m = MAPS[mapId] || MAPS.dungeon;
   scene.background = new THREE.Color(m.sky);
   if(scene.fog){ scene.fog.color = new THREE.Color(m.sky); scene.fog.near = m.fogNear; scene.fog.far = m.fogFar; }
   else scene.fog = new THREE.Fog(m.sky, m.fogNear, m.fogFar);
@@ -851,9 +904,6 @@ function applyMap(mapId){
 function groundYAt(x,z,fromY){ let best=-Infinity; for(let i=0;i<platforms.length;i++){ const p=platforms[i]; if(x>p.minX&&x<p.maxX&&z>p.minZ&&z<p.maxZ){ if(p.top<=fromY+0.61 && p.top>best) best=p.top; } } return best; }
 function distFromCenter(x,z){ return Math.hypot(x,z); }
 
-/* ============================================================
-   HAZARDS
-   ============================================================ */
 const hazards={ spinBar:null, spinSpeed:0.62, pads:[], spinEnabled:true, padsEnabled:true };
 function buildHazards(){
   const grp=new THREE.Group();
@@ -880,9 +930,6 @@ function applyHazardsForDifficulty(diff){
   for(const p of hazards.pads){ p.grp.visible = hazards.padsEnabled; if(!hazards.padsEnabled){ p.active=false; p.phase=false; p.timer=1.5; p.grp.position.y=-1.4; } }
 }
 
-/* ============================================================
-   POWERUPS — Viber voxel redesign
-   ============================================================ */
 const POWER_TYPES=[
   {id:'spark',  name:'SPARK BOOST', color:0xDFF902, dur:11, core:0xDFF902, shell:0x8a9a00},
   {id:'power',  name:'POWER',       color:0xA56BFF, dur:11, core:0xBFA4FF, shell:0x5a3aa0},
@@ -896,7 +943,6 @@ let powerSpawnTimer=4;
 function buildPowerupMesh(type){
   const g = new THREE.Group();
 
-  /* dark stone base (voxel pedestal) */
   const baseMat = new THREE.MeshLambertMaterial({color:0x1a1a28});
   const baseTop = new THREE.MeshLambertMaterial({color:type.shell});
   const baseOuter = mkEdgeBox(1.6, 0.22, 1.6, baseMat, 0x0A0A0A);
@@ -906,14 +952,12 @@ function buildPowerupMesh(type){
   baseInner.position.y = -0.55;
   g.add(baseInner);
 
-  /* outer energy shell — hollow voxel frame */
   const shellMat = new THREE.MeshBasicMaterial({color:type.shell, transparent:true, opacity:0.32});
   const shellGeo = new THREE.BoxGeometry(1.15, 1.15, 1.15);
   const shell = new THREE.Mesh(shellGeo, shellMat);
   shell.castShadow = false;
   g.add(shell);
 
-  /* corner posts of shell (black outlines, glowing edges) */
   const postMat = new THREE.MeshBasicMaterial({color:type.color});
   const posts = [[-0.55,-0.55],[0.55,-0.55],[-0.55,0.55],[0.55,0.55]];
   for(const [px,pz] of posts){
@@ -922,19 +966,15 @@ function buildPowerupMesh(type){
     g.add(p);
   }
 
-  /* glowing inner core */
   const coreMat = new THREE.MeshBasicMaterial({color:type.core});
   const core = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), coreMat);
   core.castShadow = false;
   g.add(core);
-  /* second smaller core for depth */
   const coreInner = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({color:0xffffff}));
   coreInner.castShadow = false;
   g.add(coreInner);
 
-  /* type-specific flourish */
   if(type.id==='spark'){
-    /* outer sparking cubes */
     for(let i=0;i<6;i++){
       const a = (i/6)*TAU;
       const s = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.18,0.18), coreMat);
@@ -942,18 +982,15 @@ function buildPowerupMesh(type){
       g.add(s);
     }
   } else if(type.id==='power'){
-    /* heavier ring beneath */
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.10, 4, 12), coreMat);
     ring.rotation.x = Math.PI/2;
     ring.position.y = -0.5;
     g.add(ring);
   } else if(type.id==='shield'){
-    /* extra transparent shell layer */
     const outerShell = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshBasicMaterial({color:type.color, transparent:true, opacity:0.14}));
     outerShell.castShadow = false;
     g.add(outerShell);
   } else if(type.id==='dash'){
-    /* directional arrow chevrons */
     for(let i=0;i<3;i++){
       const chev = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.5), coreMat);
       chev.position.set(0, 0.4 - i*0.35, -0.55 - i*0.12);
@@ -961,7 +998,6 @@ function buildPowerupMesh(type){
     }
   }
 
-  /* point light for local glow */
   const light = new THREE.PointLight(type.color, 0.7, 8, 2);
   g.add(light);
 
@@ -972,14 +1008,16 @@ function spawnPowerup(){
   const t=POWER_TYPES[randi(0,POWER_TYPES.length-1)];
   const spot=POWER_SPOTS[randi(0,POWER_SPOTS.length-1)];
   const g = buildPowerupMesh(t);
-  g.position.set(spot[0], spot[1]+1.4, spot[2]);
+  /* Auto-snap: if the intended spawn spot now sits inside/below a raised platform,
+     lift the powerup so it always clears the highest platform at that x,z. */
+  const groundHere = groundYAt(spot[0], spot[2], 200);
+  const safeMinY = (groundHere === -Infinity) ? spot[1] + 1.4 : groundHere + 1.4;
+  const finalY = Math.max(spot[1] + 1.4, safeMinY);
+  g.position.set(spot[0], finalY, spot[2]);
   scene.add(g);
-  powerups.push({type:t,pos:new THREE.Vector3(spot[0],spot[1]+1.4,spot[2]),mesh:g,life:26,spin:rand(0.8,1.6)});
+  powerups.push({type:t,pos:new THREE.Vector3(spot[0],finalY,spot[2]),mesh:g,life:26,spin:rand(0.8,1.6)});
 }
 
-/* ============================================================
-   FX / PARTICLES
-   ============================================================ */
 const particles=[];
 const pGeo=new THREE.BoxGeometry(0.26,0.26,0.26);
 const pMatCache={};
@@ -1006,7 +1044,6 @@ function impactRing(x,y,z,color,scale){
   fxList.push({m:m2,life:0.22,max:0.22,type:'star',sc:scale||1});
 }
 
-/* Ability activation ring — glows beneath the Viber */
 function spawnAbilityRing(f){
   const ring = new THREE.Group();
   ring.position.set(f.pos.x, f.pos.y + 0.08, f.pos.z);
@@ -1016,13 +1053,11 @@ function spawnAbilityRing(f){
   const disc = new THREE.Mesh(geo, mat);
   disc.rotation.x = -Math.PI/2;
   ring.add(disc);
-  /* inner core disc */
   const innerMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.DoubleSide, transparent:true, opacity:0.9});
   const inner = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.35, 24), innerMat);
   inner.rotation.x = -Math.PI/2;
   inner.position.y = 0.02;
   ring.add(inner);
-  /* orbiting glyph cubes */
   for(let i=0;i<8;i++){
     const a = (i/8)*TAU;
     const c = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), new THREE.MeshBasicMaterial({color:col}));
@@ -1030,14 +1065,12 @@ function spawnAbilityRing(f){
     c.userData.startAngle = a;
     ring.add(c);
   }
-  /* point light */
   const light = new THREE.PointLight(col, 1.6, 12, 2);
   light.position.set(0, 0.3, 0);
   ring.add(light);
   scene.add(ring);
   fxList.push({m:ring, life:0.8, max:0.8, type:'abilityRing', sc:1, col:col});
 
-  /* chunky geometric particles blasting outward */
   for(let i=0;i<16;i++){
     const a = (i/16)*TAU;
     const em = new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4), new THREE.MeshBasicMaterial({color:col}));
@@ -1099,9 +1132,6 @@ function updateParticles(dt){
   }
 }
 
-/* ============================================================
-   FIGHTER
-   ============================================================ */
 const CFG={ gravity:-44, fallY:-38, stocks:3, matchTime:180 };
 const ATTACKS={
   quick:{ startup:0.07, active:0.10, recovery:0.17, dmg:8,  kb:10.5, range:2.5, arc:1.15, up:0.38, hitstop:0.05, stun:0.22, shake:0.28, sound:'hitLight' },
@@ -1220,7 +1250,7 @@ const touch={stickActive:false,sx:0,sz:0,id:null};
   });
 })();
 
-const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'hard', map:'vibeworld', winner:null, victoryPhase:null, victoryT:0 };
+const Game={ mode:'menu', over:false, paused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'medium', map:'dungeon', winner:null, victoryPhase:null, victoryT:0 };
 createFighters();
 buildHazards();
 applyHazardsForDifficulty(Game.difficulty);
@@ -1313,7 +1343,6 @@ function stepFighter(f,dt,ctrl){
     f.dashT=0.22; f.dashCd=f.dashBuff>0?0.55:1.05; f.moveLock=0.16;
     f.facing=Math.atan2(f.dashVecX,f.dashVecZ);
     SFX.dash();
-    /* Viber dash trail — angular chips */
     for(let i=0;i<6;i++){
       const chip = new THREE.Mesh(new THREE.BoxGeometry(0.35,0.35,0.35), new THREE.MeshBasicMaterial({color:f.def.colors.accent}));
       chip.position.set(f.pos.x - f.dashVecX*(i*0.5), f.pos.y + 0.8, f.pos.z - f.dashVecZ*(i*0.5));
@@ -1531,12 +1560,10 @@ function koFighter(f,by,reason){
   f.vx=rand(-8,8); f.vz=rand(-8,8); f.vy=26;
   f.hitSet.clear();
 
-  /* Dramatic lime + purple impact burst */
   const LIME = 0xDFF902;
   const PURPLE = 0xA56BFF;
   burst(f.pos.x, f.pos.y+1.2, f.pos.z, LIME, 30, 16, 1.1, 1.4, true);
   burst(f.pos.x, f.pos.y+1.2, f.pos.z, PURPLE, 24, 13, 1.0, 1.2, true);
-  /* chunky geometric ring shards */
   for(let i=0;i<14;i++){
     const a = (i/14)*TAU;
     const shard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color: i%2 ? LIME : PURPLE}));
@@ -1570,10 +1597,7 @@ function useAbility(f){
   const fx=Math.sin(f.facing), fz=Math.cos(f.facing);
   f.hitSet.clear();
   SFX.ability();
-
-  /* Viber-branded ability activation ring */
   spawnAbilityRing(f);
-
   switch(f.def.id){
     case 'miner': case 'moss':{ f.vy=-6; f.abilityActive='smash'; f.abilityT=1.2; f.moveLock=0.2; break; }
     case 'volt':{
@@ -2050,8 +2074,9 @@ function updateWorld(dt){
     }
   }
   updateParticles(sdt); updateFX(dt); updateCamera(dt);
+  /* Camera-obstruction fade — runs after camera is positioned */
+  updatePlatformFading(dt);
 
-  /* Vibe World animation */
   if(vibeWorldGroup && vibeWorldGroup.visible){
     const t = Game.time;
     vibeWorldGroup.traverse(o => {
