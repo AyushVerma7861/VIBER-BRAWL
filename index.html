@@ -234,16 +234,40 @@
      overlaps on a 360-400px wide landscape phone. */
   @media (max-height:520px) and (pointer:coarse){
     .brandStamp{ display:none; }
-    #cards{ gap:5px; padding:0 5px; top:5px; }
-    .pcard{ min-width:0; max-width:112px; padding:3px 6px 4px; border-width:2.5px; }
-    .pcard .pname{ font-size:9.5px; }
-    .pcard .hbar{ height:7px; margin-top:3px; border-width:1.5px; }
-    .pcard .lives{ font-size:9px; }
-    #timer{ top:4px; font-size:15px; padding:1px 11px; border-width:2.5px; }
-    #ability{ bottom:auto; top:44px; font-size:11px; padding:3px 9px; gap:6px; border-width:2.5px; }
-    #ability .key{ width:21px; height:21px; font-size:11px; border-width:2.5px; }
-    #ability .bar{ width:74px; height:8px; }
+
+    /* ---- in-match HUD: mirrored top row + bottom-centre ability ------
+       CHOSEN LAYOUT. Two player cards either side of a centred clock, with
+       the ability pill at the BOTTOM CENTRE, near the thumb and clear of the
+       play area. The cards row is inset on the right so the pause/mute pair
+       owns that corner instead of sitting on a card, and the middle grid
+       track is deliberately left EMPTY for the clock to occupy -- #timer is a
+       sibling of #cards in the DOM, so the gap has to be reserved by the grid
+       rather than by document order. */
+    #cards{ top:3%; left:1.5%; right:calc(1.5% + 78px); display:grid;
+      grid-template-columns:1fr 1fr 86px 1fr 1fr; column-gap:6px;
+      padding:0; flex-wrap:nowrap; }
+    .pcard{ min-width:0; width:auto; max-width:none; padding:3px 6px 4px;
+      border-width:2px; border-radius:8px; }
+    .pcard:nth-child(1){ grid-column:1; }
+    .pcard:nth-child(2){ grid-column:2; }
+    .pcard:nth-child(3){ grid-column:4; }
+    .pcard:nth-child(4){ grid-column:5; }
+    .pcard .pname{ font-size:9px; gap:3px; }
+    .pcard .dot{ width:7px; height:7px; border-width:1.5px; }
+    .pcard .hbar{ height:5px; margin-top:2px; border-width:1.5px; border-radius:4px; }
+    .pcard .lives{ font-size:8px; margin-top:1px; letter-spacing:.5px; }
+    /* clock lives in the reserved middle track. The row is inset 78px on the
+       right, so its centre sits 39px left of the screen centre. */
+    #timer{ top:3%; left:calc(50% - 39px); transform:translateX(-50%);
+      font-size:15px; padding:2px 9px; border-width:2px; border-radius:8px; }
+    /* ability pill: bottom centre -- clear of the stick (bottom-left) and the
+       five action buttons (bottom-right) */
+    #ability{ top:auto; bottom:4%; left:50%; transform:translateX(-50%);
+      font-size:10px; padding:2px 8px; gap:5px; border-width:2px; border-radius:9px; }
+    #ability .key{ width:19px; height:19px; font-size:10px; border-width:2px; border-radius:6px; }
+    #ability .bar{ width:52px; height:7px; border-width:1.5px; }
     #muteBtn{ width:34px; height:34px; font-size:15px; border-width:2.5px; top:6px; right:6px; }
+    #pauseBtn{ width:34px; height:34px; font-size:12px; border-width:2.5px; top:6px; right:46px; }
     #announce{ top:42%; }
   }
 
@@ -300,6 +324,24 @@
   #muteBtn{ position:fixed; top:14px; right:14px; z-index:120; width:48px; height:48px; background:rgba(11,18,32,.92); border:3px solid var(--lime); border-radius:14px; box-shadow:0 4px 0 var(--outline), 0 0 14px rgba(223,249,2,.2); font-size:22px; cursor:pointer; display:grid; place-items:center; font-family:inherit; line-height:1; transition: transform .07s, box-shadow .07s; color:var(--lime); }
   #muteBtn:active{ transform:translateY(4px); box-shadow:0 1px 0 var(--outline); }
   @media (max-width:720px){ #muteBtn{ width:42px; height:42px; font-size:18px; top:10px; right:10px; } }
+  /* ===== MOBILE: pause button =====
+     Pausing is bound to the P key, which a touch screen does not have, so the
+     pause menu was unreachable on a phone. This mirrors the mute button and
+     sits just to its left. It is only shown while a fight is actually running
+     -- pausing means nothing on the menus -- which is why it keys off the
+     #hud.on state rather than being always visible. */
+  #pauseBtn{ position:fixed; top:14px; right:70px; z-index:120; width:48px; height:48px;
+    background:rgba(11,18,32,.92); border:3px solid var(--lime); border-radius:14px;
+    box-shadow:0 4px 0 var(--outline), 0 0 14px rgba(223,249,2,.2);
+    font-size:16px; letter-spacing:1px; cursor:pointer; display:none;
+    place-items:center; font-family:inherit; line-height:1; color:var(--lime);
+    transition: transform .07s, box-shadow .07s; touch-action:none; }
+  #pauseBtn:active{ transform:translateY(4px); box-shadow:0 1px 0 var(--outline); }
+  /* Touch devices only -- a desktop already has the P key, so a second control
+     there would just be clutter. `is-touch` is stamped on <body> at boot.
+     #hud carries .on for exactly as long as a match is on screen. */
+  body.is-touch #hud.on + #pauseBtn{ display:grid; }
+  @media (max-width:720px){ #pauseBtn{ width:42px; height:42px; font-size:14px; top:10px; right:58px; } }
 
   .menu-credit{ text-align:center; font-weight:700; font-size:13px; color:var(--muted); margin-top:14px; letter-spacing:.3px; }
   .menu-credit a{ color:var(--lime); text-decoration:underline; font-weight:800; text-underline-offset:2px; }
@@ -401,6 +443,15 @@
      matter how short its window happens to be.
      ===================================================================== */
   @media (orientation:landscape) and (max-height:560px) and (pointer:coarse){
+
+    /* ---- top-right buttons: MUST live in this block ------------------
+       The same overrides also exist in the earlier max-height:520px block,
+       but that block sits ABOVE the base #muteBtn / #pauseBtn rules in the
+       stylesheet. Equal specificity means the LATER declaration wins, so the
+       base 48px sizes were beating the landscape 34px ones and the buttons
+       grew into the clock. Declared here (after the base rules) they win. */
+    #muteBtn{ width:34px; height:34px; font-size:15px; border-width:2.5px; top:6px; right:6px; }
+    #pauseBtn{ width:34px; height:34px; font-size:12px; border-width:2.5px; top:6px; right:46px; }
 
     /* ---- shared chrome: tighten everything -------------------------- */
     .screen{ padding:8px 12px; }
@@ -563,6 +614,10 @@
   @media (orientation:landscape) and (max-height:345px) and (pointer:coarse){
     .title2{ font-size:17px; }
     .sub{ font-size:10px; margin-bottom:4px; }
+    /* On a 568px-wide phone the mirrored row leaves each card only ~90px, which
+       clips "YOU · CRIMSON" mid-word. Shave the name so it fits whole. */
+    .pcard .pname{ font-size:8px; letter-spacing:0; gap:2px; }
+    .pcard .lives{ font-size:7.5px; }
     .rr-tile .rr-tv{ font-size:14px; }
     .rr-tiles{ margin:2px 0 5px; }
     .rr-row{ padding:2px 6px; }
@@ -662,6 +717,7 @@
   <div id="announce"></div>
   <div id="ability"><div class="key">E</div><div class="bar"><i id="abFill"></i></div><div id="abName">ABILITY</div></div>
 </div>
+<button id="pauseBtn" title="Pause">&#10074;&#10074;</button>
 <div id="touch">
   <div id="stick"><div id="knob"></div></div>
   <div id="touchbtns">
@@ -741,42 +797,12 @@
     </div>
   </div>
 </div>
-<div class="screen" id="scrHow">
-  <div class="panel" style="max-width:760px;">
-    <h2 class="title2">HOW TO PLAY</h2>
-    <p class="sub">Knock every other Viber out of the arena. Last one standing wins.</p>
-    <div class="howto">
-      <div>
-        <h4>CONTROLS</h4>
-        <table class="chartable">
-          <tbody><tr><td>Move</td><td><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span></td></tr>
-          <tr><td>Jump / Double Jump</td><td><span class="kbd">SPACE</span></td></tr>
-          <tr><td>Quick Attack</td><td><span class="kbd">LMB</span> / <span class="kbd">J</span></td></tr>
-          <tr><td>Heavy Attack</td><td><span class="kbd">RMB</span> / <span class="kbd">K</span></td></tr>
-          <tr><td>Dash</td><td><span class="kbd">SHIFT</span></td></tr>
-          <tr><td>Special Ability</td><td><span class="kbd">E</span></td></tr>
-          <tr><td>Pause</td><td><span class="kbd">P</span></td></tr>
-        </tbody></table>
-      </div>
-      <div>
-        <h4>RULES</h4>
-        <table class="chartable">
-          <tbody><tr><td>Lives</td><td>3 each</td></tr>
-          <tr><td>Lose a life</td><td>Fall off <b>or</b> hit 0 HP</td></tr>
-          <tr><td>More damage</td><td>= Bigger knockback</td></tr>
-          <tr><td>Air steer</td><td>Fight the launch &amp; recover</td></tr>
-          <tr><td>Hazards</td><td>Depend on difficulty</td></tr>
-          <tr><td>Powerups</td><td>SPARK · POWER · SHIELD · DASH</td></tr>
-        </tbody></table>
-        <p class="sub" style="margin:10px 0 0;">Tip: dash and double-jump can save you from the void.</p>
-      </div>
-    </div>
-    <div class="row">
-      <button class="btn green" id="btnTutorial" style="flex:2;">START TUTORIAL</button>
-      <button class="btn small" id="btnHowBack" style="flex:1;">BACK</button>
-    </div>
-  </div>
-</div>
+<!-- The old HOW TO PLAY panel (a keyboard keycap reference table) used to live
+     here. It was ORPHANED: the HOW TO PLAY button opens the visual onboarding
+     sequence instead -- Onboard.open(...) -- and nothing anywhere called
+     showScreen('scrHow'), so no player could ever reach this table. The 8-step
+     visual walkthrough is the how-to-play experience now, so the dead panel has
+     been removed rather than left sitting in the DOM. -->
 <div class="screen" id="scrResults">
   <div class="panel" style="max-width:560px;">
     <h2 class="title2" id="resTitle">VICTORY!</h2>
@@ -3419,7 +3445,40 @@ const Tutorial={
   });
 })();
 
-const screens=['scrMenu','scrChars','scrHow','scrResults','scrPause'];
+/* ===== MOBILE: pause button =====
+   P toggles pause on a keyboard, which a touch screen has no equivalent of,
+   so the pause menu was simply unreachable on a phone. The button is only
+   visible while #hud carries .on (see the CSS), so this only has to forward
+   the press. On a touch device the press is taken on pointerup behind a small
+   movement threshold -- the same guard the character cards use -- so a scroll
+   drag across the button cannot fire a pause. Desktop keeps the plain click
+   path, and the P key itself is untouched. */
+(function setupPause(){
+  const btn=document.getElementById('pauseBtn');
+  if(!btn) return;
+  let busy=false;
+  function fire(ev){
+    if(ev && ev.preventDefault) ev.preventDefault();
+    /* guard against a pointerup plus its synthesised click both landing */
+    if(busy) return;
+    busy=true; setTimeout(function(){ busy=false; }, 260);
+    SFX.init(); SFX.resume(); SFX.click();
+    togglePause();
+  }
+  if(DEV.touch){
+    let sx=0, sy=0, moved=false;
+    btn.addEventListener('pointerdown',function(ev){ sx=ev.clientX; sy=ev.clientY; moved=false; });
+    btn.addEventListener('pointermove',function(ev){
+      if(Math.abs(ev.clientX-sx)>9 || Math.abs(ev.clientY-sy)>9) moved=true;
+    });
+    btn.addEventListener('pointerup',function(ev){ if(moved) return; fire(ev); });
+    btn.addEventListener('click',function(ev){ ev.stopPropagation(); ev.preventDefault(); });
+  } else {
+    btn.addEventListener('click',fire);
+  }
+})();
+
+const screens=['scrMenu','scrChars','scrResults','scrPause'];
 function showScreen(id){ screens.forEach(s=>{ const el=document.getElementById(s); if(el) el.classList.toggle('on', s===id); });
   /* The portrait gate changes layers depending on whether a fight is running:
      behind the menus, above everything during a match. Re-evaluate on every
@@ -3587,10 +3646,12 @@ document.getElementById('btnPlay').addEventListener('click',()=>{ SFX.init(); SF
   else { buildCharGrid(); showScreen('scrChars'); } });
 document.getElementById('btnChars').addEventListener('click',()=>{ SFX.init(); SFX.resume(); SFX.click(); buildCharGrid(); showScreen('scrChars'); });
 document.getElementById('btnHow').addEventListener('click',()=>{ SFX.init(); SFX.resume(); SFX.click(); Onboard.open(()=>showScreen('scrMenu'), 'GOT IT'); });
-document.getElementById('btnHowBack').addEventListener('click',()=>{ SFX.click(); showScreen('scrMenu'); });
 document.getElementById('btnCharsBack').addEventListener('click',()=>{ SFX.click(); showScreen('scrMenu'); });
 document.getElementById('btnFight').addEventListener('click',()=>{ SFX.click(); Music.start(); startMatch(Game.selectedChar,false); });
-document.getElementById('btnTutorial').addEventListener('click',()=>{ SFX.click(); Music.start(); startMatch(0,true); });
+/* btnTutorial + btnHowBack were removed with the orphaned scrHow panel: their
+   elements no longer exist, and an addEventListener on null would throw and
+   kill the rest of this script. START TUTORIAL is now reached through the
+   onboarding sequence, which the HOW TO PLAY button opens directly. */
 document.getElementById('btnRematch').addEventListener('click',()=>{ SFX.click(); Music.start(); startMatch(Game.selectedChar,false); });
 document.getElementById('btnMenu').addEventListener('click',()=>{ SFX.click(); resetToMenu(); });
 document.getElementById('btnResume').addEventListener('click',()=>{ SFX.click(); togglePause(); });
