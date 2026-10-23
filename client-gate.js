@@ -124,33 +124,48 @@
     );
   }
 
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
   async function ensure() {
-    /* Every entry re-reads the chain. This is what makes "sold it last week"
-       behave correctly: the cookie is irrelevant, the balance decides. */
+    if (!state.ready) {
+      await Promise.race([
+        new Promise((res) => {
+          const t = setInterval(() => { if (state.ready || state.error) { clearInterval(t); res(); } }, 100);
+          setTimeout(() => { clearInterval(t); res(); }, 8000);
+        }),
+        wait(8000),
+      ]);
+    }
+    if (state.error === 'sdk_failed' || state.error === 'no_app_id') return false;
+    if (!privy) return false;
+
+    /* already logged in: re-read the chain at the door */
     if (state.authenticated) {
       const fresh = await refresh();
       if (fresh) return true;
-      if (state.error && state.error !== 'not_a_holder') return false;
+      /* sold the Chog: definitive, do not try to paper over it */
       if (state.error === 'not_a_holder') return false;
+      /* the 10-minute pass lapsed but the login did not - mint a new pass
+         instead of leaving the button dead until a page reload */
+      if (state.error === 'no_session' || state.error === 'expired') {
+        try { return await postSession(await privy.getAccessToken()); }
+        catch { set({ error: 'session_lapsed' }); return false; }
+      }
+      return false;
     }
-    if (!state.ready) {
-      await new Promise((res) => {
-        const t = setInterval(() => { if (state.ready || state.error) { clearInterval(t); res(); } }, 100);
-        setTimeout(() => { clearInterval(t); res(); }, 8000);
-      });
-    }
-    if (state.error === 'sdk_failed') return false;
 
-    if (!state.authenticated) {
-      const done = new Promise((res) => loginWaiters.push(res));
-      try { privy.login(); } catch { return false; }
-      await done;
-    }
+    /* not logged in yet: open Privy and wait, but never forever */
+    let release;
+    const done = new Promise((res) => { release = res; loginWaiters.push(() => res('changed')); });
+    try { privy.login(); } catch { return false; }
+
+    const outcome = await Promise.race([done, wait(45000).then(() => 'timeout')]);
+    loginWaiters = [];
+    if (outcome === 'timeout') { set({ error: 'login_cancelled' }); return false; }
+    if (!state.authenticated) { set({ error: 'login_cancelled' }); return false; }
     if (state.holder) return true;
-    try {
-      const token = await privy.getAccessToken();
-      return await postSession(token);
-    } catch { set({ error: 'login_failed' }); return false; }
+    try { return await postSession(await privy.getAccessToken()); }
+    catch { set({ error: 'login_failed' }); return false; }
   }
 
   function logout() {

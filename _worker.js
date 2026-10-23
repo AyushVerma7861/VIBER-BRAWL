@@ -93,8 +93,12 @@ async function verifyPrivyToken(token, env) {
   if (header.alg !== 'ES256') throw new Error('bad_alg');
 
   const keys = await getJwks(env);
-  const jwk = keys.find((k) => k.kid === header.kid) || keys[0];
-  if (!jwk) throw new Error('no_key');
+  /* exact kid only. Falling back to keys[0] means a token whose header names a
+     key we do not trust can still be checked against one we do - and if the
+     rotation ever lines up, it passes. */
+  if (!header.kid) throw new Error('no_kid');
+  const jwk = keys.find((k) => k.kid === header.kid);
+  if (!jwk) throw new Error('unknown_kid');
 
   const key = await crypto.subtle.importKey(
     'jwk',
@@ -113,7 +117,11 @@ async function verifyPrivyToken(token, env) {
   if (!ok) throw new Error('bad_signature');
 
   const now = Math.floor(Date.now() / 1000);
-  if (typeof payload.exp === 'number' && payload.exp < now) throw new Error('expired');
+  /* an absent exp used to mean "never expires" - a token minted without one
+     would have been accepted forever */
+  if (typeof payload.exp !== 'number') throw new Error('no_expiry');
+  if (payload.exp < now) throw new Error('expired');
+  if (typeof payload.iat === 'number' && payload.iat > now + 60) throw new Error('issued_in_future');
   if (payload.aud !== env.PRIVY_APP_ID) throw new Error('bad_audience');
   if (payload.iss !== 'privy.io') throw new Error('bad_issuer');
   if (!payload.sub) throw new Error('no_subject');
