@@ -1,10 +1,15 @@
 name = "viber-brawl"
 compatibility_date = "2026-09-26"
 
-# _worker.js at the root is the gate. It runs BEFORE the static files for the
-# paths below, which is what keeps chog-trials.html from being downloadable.
+# Two things the build insists on:
+#   1. `main` must exist, or an assets binding is rejected outright
+#      ("Cannot use assets with a binding in an assets-only Worker")
+#   2. `main` must live OUTSIDE the assets directory
+# .mjs removes any doubt that the file is an ES module.
+main = "worker.mjs"
+
 [assets]
-directory = "."
+directory = "public"
 binding = "ASSETS"
 run_worker_first = ["/", "/index.html", "/api/*", "/trials", "/chog-trials.html", "/wrangler.toml"]
 
