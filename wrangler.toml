@@ -1,5 +1,16 @@
 name = "viber-brawl"
 compatibility_date = "2026-09-26"
 
+# _worker.js at the root is the gate. It runs BEFORE the static files for the
+# paths below, which is what keeps chog-trials.html from being downloadable.
 [assets]
 directory = "."
+binding = "ASSETS"
+run_worker_first = ["/", "/index.html", "/api/*", "/trials", "/chog-trials.html", "/wrangler.toml"]
+
+[vars]
+# public values - safe in the repo, they already ship inside the page
+PRIVY_APP_ID = "cmvkwos1x007d0giaefmoqz2c"
+CHOG_CONTRACTS = "0xc96d31F8626c6D03Fae5dCD3d61e3FB9F4a73763"
+CHOG_STANDARD = "erc721"
+SESSION_TTL = "600"

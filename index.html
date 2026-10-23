@@ -93,7 +93,7 @@
   .chartable td:first-child{ width:46%; }
   .kbd{ display:inline-block; min-width:26px; text-align:center; background:rgba(223,249,2,.14); border:2.5px solid var(--lime); color:var(--lime); border-radius:7px; padding:1px 6px; font-weight:800; font-size:13px; box-shadow:0 2px 0 var(--outline); margin:0 2px; }
 
-  #charGrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:10px 0; }
+  #charGrid{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:10px 0; }
   @media (max-width:720px){ #charGrid{ grid-template-columns:repeat(2,1fr); } }
   /* ---- v9 cards: 3D flip, stat bars, ability face ---- */
   .charCard{ perspective:1000px; cursor:pointer; color:var(--cream); padding:0; border:none; background:none; }
@@ -500,7 +500,7 @@
     #scrChars .diffrow{ grid-column:2; grid-row:6; }
     #scrChars .row{ grid-column:1 / -1; grid-row:7; }
 
-    #charGrid{ grid-template-columns:repeat(4,1fr); gap:7px; margin:5px 0; }
+    #charGrid{ grid-template-columns:repeat(5,1fr); gap:6px; margin:5px 0; }
     /* The roster is FOUR fighters, so the grid is a single row -- there is
        plenty of height to spare, and the cards can breathe instead of being
        squeezed. (Sizing them for two rows was wasted space.) */
@@ -691,6 +691,36 @@
     .ob-body{ grid-column:2; grid-row:2; overflow:auto; }
     .ob-foot{ grid-column:1 / -1; grid-row:3; margin-top:0; padding:0 18px 13px; }
   }
+
+  .btn.chog{ background:linear-gradient(135deg,var(--vibe-purple) 0%,var(--lantern-gold) 100%); color:var(--ink);
+             box-shadow:0 6px 0 var(--outline), 0 0 26px rgba(165,107,255,.38); }
+  .btn.chog .tag{ display:inline-block; margin-left:8px; padding:1px 7px 2px; border:2px solid var(--outline);
+                  border-radius:6px; background:var(--ink); color:var(--lantern-gold); font-size:10.5px; letter-spacing:1.4px; vertical-align:middle; }
+  #trialsWrap{ position:fixed; inset:0; z-index:400; display:none; background:#05030A; }
+  #trialsWrap.on{ display:block; }
+  #trialsFrame{ width:100%; height:100%; border:0; display:block; background:#05030A; }
+  #trialsLoad{ position:absolute; inset:0; display:grid; place-items:center; background:#05030A;
+               color:#F2EAFF; font-weight:800; font-size:13px; letter-spacing:.24em; }
+  #trialsBack{ position:fixed; left:14px; top:14px; z-index:401; display:none; align-items:center; gap:7px;
+               padding:9px 14px; border:2px solid rgba(165,107,255,.55); border-radius:11px;
+               background:rgba(8,6,16,.84); color:#F2EAFF; font-family:inherit; font-weight:800; font-size:12px;
+               letter-spacing:.14em; cursor:pointer; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+  #trialsWrap.on #trialsBack{ display:flex; }
+  #trialsBack:hover{ border-color:var(--lantern-gold); color:#fff; }
+
+  /* ---- holder gate ---------------------------------------------------
+     The Chog is visible but locked: the card stays on the roster so a
+     non-holder can see what they are missing, and the tile stays on the
+     menu for the same reason. Both unlock on the chog-gate event. */
+  .charCard{ position:relative; }
+  .charCard.locked{ opacity:.55; }
+  .charCard.locked .charIcon{ filter:grayscale(.55); }
+  .lockBadge{ position:absolute; top:6px; right:6px; z-index:4; padding:3px 7px 4px;
+    border-radius:6px; background:#0C0F08; color:var(--lantern-gold);
+    border:1.5px solid var(--lantern-gold); font-size:8.5px; font-weight:800;
+    letter-spacing:.12em; line-height:1; pointer-events:none; }
+  .btn.chog.locked{ filter:saturate(.45) brightness(.82); }
+  .btn.chog.locked .tag{ background:var(--lantern-gold); color:var(--ink); }
 </style>
 </head>
 <body>
@@ -753,6 +783,7 @@
     <button class="btn" id="btnPlay">PLAY</button>
     <button class="btn blue" id="btnHow">HOW TO PLAY</button>
     <button class="btn pink" id="btnChars">VIBER SELECT</button>
+    <button class="btn chog" id="btnTrials">CHOG TRIALS<span class="tag">HOLDERS</span></button>
   </div>
   </div>
   <div class="menuSide">
@@ -775,7 +806,7 @@
   </div>
 </div>
 <div class="screen" id="scrChars">
-  <div class="panel" style="max-width:900px;">
+  <div class="panel" style="max-width:960px;">
     <h2 class="title2">CHOOSE YOUR VIBER</h2>
     <p class="sub">Pick a fighter. Three AI Vibers will be waiting.</p>
     <div id="charGrid"></div>
@@ -863,7 +894,8 @@
   <div class="photo-hint">Tag <b>@RAVEN_SPARK7</b> &amp; <b>@vibevibefun</b> when you share — let them see your Viber!</div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+        integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
 <script>
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -1107,7 +1139,7 @@ const CHARACTERS=[
   { id:'miner', name:'CRIMSON MINER VIBER', tag:'HEAVY',
     desc:'A grizzled deep-mine brawler with a pickaxe and a grudge. Slow, but one good swing flattens the ring.',
     abilityName:'MINER SMASH', abilityDesc:'Leaps skyward then crashes down, launching everyone in a wide circle.',
-    abilityCd:8, img:'viber-miner.png',
+    abilityCd:8, img:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="18" fill="%231a1215"/><rect x="20" y="26" width="60" height="50" rx="6" fill="%23d23a2a" stroke="%230a0a0a" stroke-width="4"/><rect x="45" y="8" width="10" height="22" fill="%238b5a3a" stroke="%230a0a0a" stroke-width="3"/><rect x="26" y="38" width="20" height="18" fill="%23f0f0e8" stroke="%230a0a0a" stroke-width="3"/><rect x="54" y="38" width="20" height="18" fill="%23f0f0e8" stroke="%230a0a0a" stroke-width="3"/><rect x="32" y="44" width="9" height="9" fill="%230a0a0a"/><rect x="59" y="44" width="9" height="9" fill="%230a0a0a"/><rect x="18" y="68" width="64" height="10" fill="%238b5a3a" stroke="%230a0a0a" stroke-width="3"/></svg>',
     speed:11.5, jump:16.0, health:110, weight:1.20, damageMul:1.08,
     colors:{head:0xd23a2a,body:0x1a1a1e,arm:0x2a2a30,foot:0x111115,belt:0x3a2a20,dark:0x0a0a0a,visor:0xf0f0e8,eye:0x0a0a0a,accent:0x8b5a3a,boot:0x0a0a0a},
     headExtras:[
@@ -1127,7 +1159,7 @@ const CHARACTERS=[
   { id:'moss', name:'MOSS VIBER', tag:'HEAVY',
     desc:'Slate-capped green machine. Big eyes, bigger slams, and the slowest legs in the arena.',
     abilityName:'SEISMIC SLAM', abilityDesc:'Ground-pounds into a shockwave. Same weight, meaner attitude.',
-    abilityCd:8, img:'viber-moss.png',
+    abilityCd:8, img:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="18" fill="%230f2419"/><rect x="16" y="20" width="68" height="12" fill="%232a3035" stroke="%230a0a0a" stroke-width="4"/><rect x="20" y="30" width="60" height="48" rx="6" fill="%231a4a30" stroke="%230a0a0a" stroke-width="4"/><rect x="25" y="40" width="21" height="21" fill="%238fffaa" stroke="%230a0a0a" stroke-width="3"/><rect x="54" y="40" width="21" height="21" fill="%238fffaa" stroke="%230a0a0a" stroke-width="3"/><rect x="31" y="46" width="10" height="10" fill="%23f0f0e8"/><rect x="60" y="46" width="10" height="10" fill="%23f0f0e8"/></svg>',
     speed:11.5, jump:16.0, health:110, weight:1.20, damageMul:1.08,
     colors:{head:0x1a4a30,body:0x1a4a30,arm:0x1a4a30,foot:0xa8ffc0,belt:0x2a3035,dark:0x0a1a10,visor:0x8fffaa,eye:0xf0f0e8,accent:0x2a3035,boot:0x0a1a10},
     headExtras:[
@@ -1143,7 +1175,7 @@ const CHARACTERS=[
   { id:'volt', name:'VOLT VIBER', tag:'SPEED',
     desc:'Electric blue blur in a top hat. Outruns, outflanks, outclasses — just don\'t get hit.',
     abilityName:'FLASH DASH', abilityDesc:'Blinks forward in a lightning streak, smacking anyone caught in the landing zone.',
-    abilityCd:5, img:'viber-volt.png',
+    abilityCd:5, img:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="18" fill="%23102444"/><rect x="15" y="24" width="70" height="10" fill="%233a2a20" stroke="%230a0a0a" stroke-width="3"/><rect x="26" y="10" width="48" height="16" fill="%233a2a20" stroke="%230a0a0a" stroke-width="3"/><rect x="20" y="32" width="60" height="46" rx="6" fill="%232a6ac0" stroke="%230a0a0a" stroke-width="4"/><rect x="27" y="42" width="18" height="18" fill="%23fff0a0" stroke="%230a0a0a" stroke-width="3"/><rect x="55" y="42" width="18" height="18" fill="%23fff0a0" stroke="%230a0a0a" stroke-width="3"/><rect x="18" y="70" width="64" height="9" fill="%232a8040" stroke="%230a0a0a" stroke-width="3"/></svg>',
     speed:13.8, jump:18.2, health:95, weight:0.95, damageMul:1.00,
     colors:{head:0x2a6ac0,body:0x2a6ac0,arm:0x2a6ac0,foot:0xffe060,belt:0x2a5040,dark:0x3a2a20,visor:0xffe880,eye:0xfff0a0,accent:0x2a8040,boot:0x3a2a20},
     headExtras:[
@@ -1160,7 +1192,7 @@ const CHARACTERS=[
   { id:'phantom', name:'PHANTOM VIBER', tag:'TRICKSTER',
     desc:'A translucent phantom with stepped ears. Slips through attacks like smoke and strikes from nowhere.',
     abilityName:'PHASE', abilityDesc:'Becomes invulnerable and 45% faster for 2 seconds. Untouchable.',
-    abilityCd:8, img:'viber-phantom.png',
+    abilityCd:8, img:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="18" fill="%231e1233"/><rect x="24" y="12" width="12" height="20" fill="%237a4ab0" stroke="%230a0a0a" stroke-width="3"/><rect x="64" y="12" width="12" height="20" fill="%237a4ab0" stroke="%230a0a0a" stroke-width="3"/><rect x="20" y="28" width="60" height="50" rx="6" fill="%237a4ab0" stroke="%230a0a0a" stroke-width="4"/><rect x="26" y="40" width="20" height="20" fill="%23b0b0b0" stroke="%230a0a0a" stroke-width="3"/><rect x="54" y="40" width="20" height="20" fill="%23b0b0b0" stroke="%230a0a0a" stroke-width="3"/><rect x="32" y="46" width="9" height="9" fill="%230a0a0a"/><rect x="60" y="46" width="9" height="9" fill="%230a0a0a"/><rect x="22" y="70" width="56" height="7" fill="%234ad0c0"/></svg>',
     speed:13.0, jump:17.6, health:100, weight:1.00, damageMul:0.98,
     ghost:true,
     colors:{head:0x7a4ab0,body:0x7a4ab0,arm:0x7a4ab0,foot:0xe8e0d0,belt:0x4ad0c0,dark:0x2a1840,visor:0xb0b0b0,eye:0x0a0a0a,accent:0x4ad0c0,boot:0x2a1840},
@@ -1173,6 +1205,14 @@ const CHARACTERS=[
     bodyExtras:[{w:1.36,h:0.20,d:1.10, x:0,y: 0.34,z:0, c:'accent'},{w:1.36,h:0.20,d:1.10, x:0,y:-0.02,z:0, c:'accent'}],
     armExtrasL:[{w:0.50,h:0.20,d:0.54, x:0,y:-0.28,z:0, c:'accent'}],
     armExtrasR:[{w:0.50,h:0.20,d:0.54, x:0,y:-0.28,z:0, c:'accent'}]
+  },
+  { id:'spiky', name:'CHOG VIBER', tag:'BRAWLER',
+    desc:'Crowned in stepped royal-purple voxel spikes with pixel-art eyes, rosy cheeks, and C-claw hands. Whirls into a starlight spike cyclone that launches rivals.',
+    abilityName:'SPIKE NOVA', abilityDesc:'Whirls into a high-speed purple voxel spike cyclone, knocking back and damaging every rival nearby.',
+    abilityCd:6.5, img:'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAwMDAgQDAwMEBAQFBgoGBgUFBgwICQcKDgwPDg4MDQ0PERYTDxAVEQ0NExoTFRcYGRkZDxIbHRsYHRYYGRj/2wBDAQQEBAYFBgsGBgsYEA0QGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBj/wAARCADcANwDASIAAhEBAxEB/8QAHQABAAEFAQEBAAAAAAAAAAAAAAcBAgUGCAQDCf/EAFcQAAEDAwEFAQcPBggNBQAAAAEAAgMEBREGBxITITFBFCIjUZGSsQgVFhcyM1JTYXGBobPR0iQ0cpOksiU3QlVic3TBJjZDRVZXY2SDlLTC4jVGoqPT/8QAGwEBAAIDAQEAAAAAAAAAAAAAAAQFAQIDBgf/xAA1EQACAgIABAIGCAcBAAAAAAAAAQIDBBEFEiExE0EUMlFhcfAGM1JTkaGxwRUWIjSB0eEk/9oADAMBAAIRAxEAPwDYERFaFaEREAREQBERAEREAREWQERFgBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREARUJw0k9i1Vm0jRskYe28twRkeBkH9y2jBy7I2UXLsjasqucrVfbF0d/PLf1T/uWUsuorPqBtQ60VgqRTuayUhjm7pcMjqBnksyrlHq0HCS6tGWRUyq5WhqEVMqoKAIiIAiIgCIiAIiIAiIgCIiAIiIAqdFVUKAqqZQHJAUfybTntqaiOLTNTKyKaSEPFVGA7ceW5weY6LpXVOx6gtm8K5T6RRIGTlVUd+2fOP8A2rVf81Es9pTV41NNXwutctC+jMeRJK1+8HhxB73p7lb2Y1ta3OOkbTpnBbkjY5XNZA9z3BrQ05JOAFz9bBeGWal4c1Fw+E3dDmyZxjtwVIm1+5T0+z5tFRSR79dVMppGEAl8ZySBnpzDefZ9KjjuKj7dKuH0x/jVjwqDTlIm4MdJyPZxL3nHEt/myfet22XCcVWoBVyQmZ0tOcR5GRwz2Hmo87jox00u4fTH+JfewXKqsW1PTxo6RlrpK6Y0dWZRHiRh77Gcnd5tbz5eJS+Ipypfu+J2yo81bOgCFQjC+c83Do5pWEEsjc7x8wCf7lElv2ha2rrdDVF1kZxY2v3e5ZOWRn4ao6cedz1BFXXVKz1SX1UBRQdc6zGfC2T/AJaT8a3PRF8uV/09UVV17m7ohrJKfNOwsaWtDSORJ598trsWylbmjayida3I2QdVVUCqoxxCIiAIiIAiIgCIiAIiIAiIgKZVERAVb7tvzhc7TzUkV0uAku1dE7u2pzGzO6PDP6d4fSuiW++N+cLn8G4mrrRFPStj7tqSA+NxPvz/ABOVnwpbtfwJ2D6zPGa2gJx683A+d+BbJoTVGmbFV35l01DFTyVEcBh7seWufhkgOOQ6EjyrEGO6npV0Q/4T/wASj/Vr5KbXlK6rlhle6mHuWkDGT2ElWedXzVpe/wCfMmXx5o6Nngy2htcVbdKxlNPBvyNMmQCA0tx3pxzWSdVW9xz7Ia7zv/BUtDnCptZBIHcLv+xbAXk9rvKpNFOl0OsV06Gv91W8H/GCu87/AMFjL/JRTWgzQ3SoqZ4XAxiQ5ABI3v5I7Fue8fhHyrD6qc72H1+HHHDHb/SC2uq/oe/n8zMl0M9oLVGltN0F8pLxf6ejlqWxSQMrJMOk8C4HHLnzwFo9uipnWqmB06+TwTO/HD77kOfulHGpauQXWlkJyRA0c/kUl2Rj5LVB/CNW3wbeTSzA5foqtwoLxp8pGqiuZv2nqjpaPe56ZcPnEf4lKuy1jGaQrBHT9ztFxmxFy73vWeLIUb9xvd0uld5WfhUkbLo3RaUrmOlfIRc5u+fjJ71niWOKx1Wunn7jTNWoG7onaioSrCIiAIiIAiIgCIiAIioUAJVERAUJA6lWmRoOC5vlUf7UgXSWGPiSsaZagnhvLDyjbjmCFH9DCZ6R8j62vzxpGDFXIMAOIA90p+NgSvjzJkqrF8SPNsme/wCp6PTsVHPUCORs9QIeczWBnel28Sf0cfSoZgr6eohfK69xU7pJpZDGOAd3ekcepGT1ThkXW2iSepnbxnDdqJnSD3t3Y4lZk09P2QReYFbYWA6W3vqTqMdV/ExPGp/9JI/2f8K880NqnnE015pJJQN0SPjpi4DxZ3Vne54eyCLzB9ycCD4mPzB9ynulv5ZI5TBNjoGPifHqNsZiYY2broRhpxy6fIF9TLT4/wAaj58H3LMcCDPvEXmBODD8TF5g+5ZVLXyzOjDcWD/So+fD9y+U7KGrpX01VqQSRSDDmF8PMeRZ7gQk+8ReYE4EPxEXmBHS30f7/wCxo1Y2PTBcC6uoXkDGXiF3L6QvfELdEA2K+07GjkA1tPy/+KzXAh+Ji8wfcqCCH4mLzAtVj67a/Mxy+wxraulYOWoos/o0/wCFbDoTWsVBcjp58LKltXciW1nGjYAHsbzLQMHBbjl414e54PiYvMC1/WbI4tKudGxrHcaPvmDdI59hCjZmJz1vfl8TldVzx1I6JjkjkBLJGP8AHuuDseRXqKdidQZ6O9d/K4NdABxJC/HeOz1KlZeZur8ObgU9kOSXKERFzNAiIgCIiAIiIAre1XK1AERD0QEebUPziwH/AGlR9m1aBbHfkUn9ol/fKmDWOm6bUNlLpHVjaqkjlkpTSybjjIWEAHkcgkDkoas0dVFbnR1kMsVQ2aRsscjcOa7eOQR2HOVf8Iti14fmtss8KaceX2H2cc3a2/1zvs3LNrCOH8K23+ud9m5e2sqLgbpR262U0Es9SHu8M4gNDQM9PnVpO+FEZWWPSRPj17Huz2Iq+x3XDhkUNr5/05fuVfY3rkDLqK14/Sl+5V/8xYH3n5M7eDP7JZlV7V4GVVVSXGpoL2KSknhDHNDZMB4dnn33PsXsjmilZvwyMkb03mODh5QrSjJrvgp1vaZza10ZenJW58S809wooYpXOrKfeY0ndMrQcgdOq6ykorbMdu56uRTp0Xntdt1heLXBX0lFbRFNGJGb75M4IyOgXt9i+uRzdSWrzpfuVO/pDgJ6dn5M6Kqb6pHxye1a9rTHsTfn46P0rK3ePUthgZU3GhoDAZGMcY3SZG84N7R8qxGt2k6VcfFOz0lSIZ1OZTKVL2kcrIuKakjbNgzs0d9HifB+69TCoc2Cfmt+H9OD0PUxrzmZ9c/nyKK/12ERFGOQREQBERAEREAVp6q5WoAiIgCjfWej3Q1tPc9OWi6VdTUVUklXHTSOlBDmk5EZdgd/jotv1JqSj0xboKysp6qds04p2spmBzslrnZx4sNKhqpllv1xuNw9dLzBDNWzOjpxUuj4bd7kMDpjxKdg02znuvyJWLXNy5onwjqGzXK1v3Hs3pn968YIIY8EEeMHK2vS1OJtsWn2HmNyoOD8zFp8FtiorvbBHU1b2iVzQyWTeaPBuOenVbno6Tc206ezzHDqPQxWHGHL0C7m76/0XePvnjv2o6sgtNJwm5gZ0+Cvo610RbgQs8gWs692paU2W2K33TVfd/c9ZMaeIUdPxnFzWb5yN4YGFzFtGvPqltnmoLFSXjaPI0aimcLc2lqGPDWl7GtEmYhu++s8fb4l8xpxZ2ra7E3IzI1PT7nSurtmNg1Qxk01BS91xjdEzomucW+L5lz9rTQlx2a3LjF1I6xVdUMS4LDCXtxg88Dm361uNNpX1Tuiq9mrdoO0Smq9MWaTu2709NWNmklpozmRrGcFu8SByGRnxqXdPXnSe1vZ02826CWptNW6SACtgDH70bt05aScYPQqfi5N/DbY2Re189DlC2vJTXZnJz7s2prqOis8tFVVVTMI2tMm8AN0knDTnsUqaB2M22SytddKWmlq94ukkdCCCSSeW9z7cfQpHg2V2ijrGy00UTHNPeuETQR9OFpupdQ6m2i3St0DsM1DLZ9Uaeqnuu0tY3uaJ8LSYi1jy1+/4QtPQcualcR4vdxOajFcqRvqvHi5ze2SjYtL01qoBTbkTmt5Nw0DAWXNrpCMcCM/QuP9oN09U7sxu9itmp9pe9PepHRUncVTHKAQ9jDvkwjAzI3x9qmbSGtNSbMtRUWzjbbqCe8asvtY19rmo2iphbC48INfIGs3fCMecbp5HOexVNmFOK5t7Na+IQnLl7GT23Weij2MXaoELA+N1OWkDp+URrmTXDiNMvA6cdnpK6n25uJ2H3rAxzp/+ojXLGueekZGlxbmeMZacHqvY/Rb+zt+P7Gmbvm6+w2zYJFP62X2pdC8QOniiZKcbr3NYS4D5g5vlUwKGdgEXCor/iWZ4dJA7D3kgHdeMgdnQeQKZlvk78R83c8zf67CIi4HIIiIAiIgCIiAK1XK1AEPREQGibU5GRactksjt1jbi3Lj0HgpFG1nIdSVD2u3muqpSCO0by6ExyUR6ssNdZL+6ukrKWaluldPI2NsbmyREtL8Ek4PTHRW3DMlQmq5eZPw7UnyM12U/wAMW3+ud9m5bRo4b22rT2efg6j0MWrT49eLZj4932bls+jCfbr09gZPCqPQxSuOf2V3z7C3o+sXxNs2JQR7QvVIbSdP68aNT2m2TyuoaC8juuCkPdjmZiY/IZ3g3eXZyXMF31xfbntFoqvVeoLpdqe0XTfp46uqMphjZUAlkYecDkwDHyBd2bHdktboPbHrTWtXe6Wth1A50kVNDC5j4A6oMuHEnB5HHJQnerNafUxUt7pNYWW361l1o2oNDPBTMYbaWB4JPGDicmoYe8x7j5l4emcXFcpAyISU2pGwbR/VebPNXbL9T6btmn9TRVN1oKikhfURwBjHSNIBdiQnHPngFbf6lMZ9TFaz0/L637ZcMaR07Uao1rZNLQ1kdNPcqqKjbUStLmsc843iBzIX6EbM9KVWyHYzS6ZrayC7T01TNKZqdromO4sm8AA7J5KNnyjyKPmTOGVSnZtIkYjBzhcY6K2v2DZF6q/abeNQW+5VcFdV1NJG2gaxzmuFXv5O+5oxgHoup2a0g7phjqKLgsllbFv8TO6T07Fxv6ozZJctGXyr17U3yiq6bUF6nMVJDC9r4N8OlG84nBwBjl2qPgNRm1LzJnFMecYLp2K+qP23aY2uXHS9Xpiku1tltHHL3V3DjcXPdGWFm488wY/k7Fv+yeqqdU+pM2h671TI+96osvdRtl8uJ49ZQ7tKyRvBmdl0eHuc4YIwSSop2Ga90rpH17sGotFxX+p1C6CjoqmWKF4onOD497wjSfdStPe49z8y6u0BsHu+gfU6602aV+pKCtqb6J2x10MEjWQ78DYu+a45dzbnl41ayaS6lFGLb6EXabvl31D6gquuV/ulZcq11wex1TWSmWQtbWRBo3jzwFGeuRnSz8fHs9Kmu77ParZn6j246TqbnDcpoqoVBqII3RtIkqonYw7nyUJa1djSzwfj2ekq8+jmnj3tdt/sWd6ajFS76Nq2Cfmd9H9OD0PUxqHdgv5pff04PQ9TEs5n1z+fI8/f67CIijHIIiIAiIgCIiAJgImUBQ9VRVKogCwepdLU+qYaOCeuq6M00xkZJTbucubukHeBGMFZxFlNxe0ZTae0c7U88brrbqaSpMtTFUSteHNw7vWvGTyA7B0Ww20H2yrGWBxduzcmgk/yPEtx2kkihsmCf/UD9jItd0fkbadPOJONyf0MVpmXu3htspfPY9Bw65ynCbXmTpCKp0Q8HUDl8Fyk9rI5IY+JHG/DRjiNDscvlXygc3hDvuxfbeb4wvmrm2eiyr/Ga6a0WGnpw4OFPA1w6OETQR9Sh3Wu0q4xbZfaxbp19LRTQMmGpZ5C2nhcYjKA/ebuYyAzm8cz4+SmMub4wsBrfSls17s/uOj7xU1UNBXtayV1M4B7d17XjG8COrR1CzBrf9RDfPHrDoyAtXawvGnLD64sjo9Syw1EY7gtsrHSHmcv8HvuwMc+XaF0DpG4jUegLLequ29yy1tHFUvpJ27xgc5oJYd4A5GcdAtA2cep50Tsw1s3VFgul5mrBTyUwZVPi3N2TGT3jGnPLxqWhgHqtrHDtD8TPi22vdn4FO56bP5rT5Hbwm/ctX1Zx33ODcbK5vC5loJ57x8S2ovbnsVC5u7zP1rnGTTOtFiqnza2c/7UzNHsyuXEjmDN6Dm5pAHh41B2uGcTS7txr3OM7MNY0uJ5noBzK6m27He2G3rDs99T8s/7zGueqMubq6wFpIIusHQ47SvdfRuX/jufv/Yg8Wv8SXNrXQyGwegkg03ea6ZtSx81YyIMlYWDdZGCCAQD1e7J+QKWULnPOXOc4/KcotZycm5M8lOXM9hERamoREQBERAEREAVo6q5WoC5WomEMBERDJhdTaaGpaWjpxcH0L6eoE7ZGRNkz3rmYIJHY4qGor1Tw1lFXM1K233OidIwSQljXA726ctcCByaOSnC8XajtFqkqKusp6ZxY8QmZ4aHvDC4AZ6nl0XP1dtH2oR0kNTHeraGyRtef4MjJ5gHtU7FdjjKKjzR80yZiTsinym4+2vrAe52s1bR4sU/4FcNrGr+3a1V/T3N+BRnNtj2iUcjHVOoLdguGWm2wgkZGezxLD66uNpvm06/3e01cdTR1NYXwzNG6Ht3GjIBAPUFIwoc+SVEUTVlWN9f1Jl9tjV+P426r9m/ArTtZ1eD/G3Vfs34Fz1w4/hNThQ/Cb5V39HxvuYm/pM/adCe2zrH/W5Vfs34FUbWtYdu1uq/ZvwLnvhwjtb9Spw4j0c36k9Hxvuo/gPSZ+06G9tnWBH8bdV+zfgVp2q6y/1s1n0CmP8A2Ln1sMWfdN+pbvbNpNVpLZTQ2rTl5o6S6Ou9U+qZLTNlxCWNLD3wxzIPQ5XG6vGhrVMTWWVYuxv9z13fL7a32297S6ivoZS0y08nADX7rg4Z3Wg9WhZjRtli1LdDfIrx+TW24xujgiha5spawO5vzkc3EdOxRbDtY2mSAOF+t5z2+tkP3Lfdmm0u71mpKui1vqK2sgdTMdTb0LKbelMgbugjqSD0ScpV1ONdain30R77rZxeyaQqpjDiD1CKAVoREQBERAEREAREQBWq5EMMt7VcVb2q4dEBaiuwrUBoO1CKKaGwRzRskZ3bJlr25HvDlHN2pGyQEBgAxgAKSNpvvVg/tsv2Dlo9THvxEL0nCUnS/iW+Gt1EWVVpZNq2kgkja9jo5DhwyFnbHpqgkpagzUNO8tnc0FzAcDA5L0z07Rre3DHWOX0LYbKwCOtby5VTv3WrrTjx8Vtrz/ZHWEFsxXsXtXT1upv1YVPYraj/AJupv1YW08MKoYO0BTvR4fZR15ImqjS1qH+bqb9WEOlrXjlb6b9WFtW4MqnDGU8CH2UPDRqp0xbMYFvpv1YWl3a000cN8a2nibwHO3cNHejl0Uu7jefJRxeG7w1V8hd6QoObTFR7e39DnZFJGHoW/ksWB/Ib6FkYommupHuY0ltVBgkcx4Vq+Vpg36SLPwG+hZjuXdfA7HSoh+1YuM690N+44tPlOrZPf5P0j6VarpPf5P0j6VavOFSEREAREQBERAEREAREyhhlMIFVU6ICqoVVDzQGhbTBllg/tsn2D1pcg70hSNrKw3fUdbYLbZIaeasNZK5rJ5uC0gQPz32DjyLGu2PbT3dbNZgPH67D/wDNW+BxPFxq3C2aT2XeDXJ1bSImrGf4cWogdY5vQszaBg14/wB6d+41ejVuj9R6S1lYjqKjo6c1DJxF3NV8fewOee9GOq+Fp93cP7W79xqtcO+u9uyp7Tb/AER35XGWmjIYVexUPVFZ7MlVQ80RYGyhCjm7Dlqvl03vSFI56KObm4b+rATy77+5QM71V/n9DnYfPTzd6jiJ+Lb6AtimgxTxkfHw/asWZ0jsl15cLVBPRW21SRviY5pfcdw4LQRy3Fn7xss2gWixvuNytdqipIJYHSPjuQkcBxmDk3cGfKqn+L4XguvxFvWjZ0WKHqsl6T35/wCkfSrVc85mf+kfSrVTHnwiIgCIiAIiIAiIgCoQqohhlMFDntVUQFB0QlV7FagPtaSBtG02f9vUf9NIsTrK37TqG+akvcFO+exxvkq4Xev01OY4WsBIEbOQ6E46816aikbUy083HqqeaneXxTU0zonsJaWnDm8+YJCtqqOetoJqOrvl+mp52GOWJ9ylLXtIwWkZ5ghVeRh2WXeJHWveXOJn1VUeFPe/cR/tNpaWksNm1HUSXKdlPIXzTT1EtUKeN8R+ETujeLRn5lGlt1ZYWGse+vaxstS57MsdzG60Z6eMFTPtJpo5NkF6pd3Efc7I8eIcRgXOt2oZ7K40UdBTzQ8Rz2TPLt7n2HC9Vwuc6q9QS0vd7TnRfKScn1NxOsNOfzmzzHfcnsw05/ObfMd9yjg1M/X1tpvOcs7ouyy6x1kzT4ZSULn08lRx3MdIO8LeWA4dd76lYz4hOC3Lt8GdXe0ts2n2Yac/nJnmO+5PZhpzsubPMd9yyl32M1Fo09X3U3qgnFJTSVBjFJI3e3Gl2M7/ACzhRGytnfE13rZTDIB6u7VrDiTs9XX4M1jk83YklurtOOOPXNnmO+5axTS0N61bcrXSCSsfcKhrY4YWOJkbvAu6dO9DifEAsC2pqS4YttL5XLa9lcD49tVlqHsYwyyzu3W9B4B/JccvJslDbRiy18uyb57HX2e922xaKo62qlqY5n8Oov1TTsjZFu9MOIPJ31LdZqG/W71P98g1Q0srX1LZGRmsdV7kZmh3WiR3M9D1XjqbfFU1kFXx6unqIA9sc1LO6F4Dsbwy08wd0L5VVr7tpzT1l4vtTA4guhmuMr2PwQ4bzScEZAP0LxeRgzss3HSR0xuJV11cs9uRkX++O+cq1O0k9vNFalIgiIhkIiIAiIgCIiAK1XIgLeauyERAFQ4VUQxotRXIhk1faL/FdeBj/JM+1YouuVBFWscyRmcE4U8kAjBAI+VU3W/Bb5FYYecsaLjy737yTRkeEmmtnNT9PUwd719S2HZvbo6La/ROjZu71vqgeXyxqdN1vwW+RA1oOQ0A+PC3yOIRurcFDX+f+G9mUpRaUTEatGdA30eO3VA/+py56p7FAaSI8L/Jt7PkC6d6jBVNxnwG+RccPLWPvcd7OdFyqT6bOaRYYAMiP6lnNF26Ok2oafkazB40wz/wJFPW634LfIm60HIa3yKTfxKNtbgoa37/APh0nlKUXHl/MoXhWl2V9EVSQy1pyFciIAiIgCIiA//Z',
+    speed:13.2, jump:17.8, health:105, weight:1.05, damageMul:1.05,
+    customSculpt:'spiky',
+    colors:{head:0x6B42B8,headShade:0x58339E,body:0x673FB4,arm:0x673FB4,foot:0x6239AD,belt:0x522E96,dark:0x15121D,visor:0xF2C2A2,eye:0xFFFFFF,accent:0x9B59FF,boot:0x5A34A2,blush:0xDF7382,nose:0xD67A7C}
   }
 ];
 
@@ -1183,6 +1223,94 @@ function buildViber(def){
   const root=new THREE.Group();
   const bodyPivot=new THREE.Group();
   root.add(bodyPivot);
+  if(def.customSculpt==='spiky'){
+    const headMat=M(C.head), shadeMat=M(C.headShade||0x58339E), bodyMat=M(C.body), armMat=M(C.arm),
+          footMat=M(C.foot), bootMat=M(C.boot||0x5A34A2), beltMat=M(C.belt||0x522E96), darkMat=M(C.dark||0x15121D),
+          skinMat=M(C.visor,{emissive:C.visor,emissiveIntensity:0.14}),
+          blushMat=M(C.blush||0xDF7382,{emissive:C.blush||0xDF7382,emissiveIntensity:0.22}),
+          noseMat=M(C.nose||0xD67A7C,{emissive:C.nose||0xD67A7C,emissiveIntensity:0.22}),
+          whiteMat=M(0xFFFFFF,{emissive:0xFFFFFF,emissiveIntensity:0.65});
+    function addB(grp,w,h,d,mat,x,y,z,outline){
+      const b=mkBox(w,h,d,mat,outline!==false);
+      b.position.set(x||0,y||0,z||0);
+      grp.add(b);
+      return b;
+    }
+    const legL=new THREE.Group(), legR=new THREE.Group();
+    legL.position.set(-0.28,0.66,0); legR.position.set(0.28,0.66,0);
+    bodyPivot.add(legL,legR);
+    for(const lg of [legL,legR]){
+      addB(lg,0.42,0.50,0.46,footMat,0,-0.25,-0.02,true);
+      addB(lg,0.43,0.16,0.56,bootMat,0,-0.58,0.03,true);
+    }
+    addB(bodyPivot,1.16,0.82,0.86,bodyMat,0,1.15,0.02,true);
+    addB(bodyPivot,1.06,0.10,0.78,beltMat,0,0.69,0.02,true);
+    addB(bodyPivot,1.00,0.74,0.12,shadeMat,0,1.15,-0.46,true);
+    addB(bodyPivot,1.08,0.12,0.80,beltMat,0,1.61,0.02,true);
+    const armL=new THREE.Group(), armR=new THREE.Group();
+    armL.position.set(-0.80,1.48,0.02); armR.position.set(0.80,1.48,0.02);
+    bodyPivot.add(armL,armR);
+    function mkVoxelArm(grp,sx){
+      addB(grp,0.34,0.09,0.40,shadeMat,0,0.045,0,true);
+      addB(grp,0.40,0.64,0.46,armMat,0,-0.32,0,true);
+      addB(grp,0.36,0.07,0.42,beltMat,0,-0.675,0,true);
+      addB(grp,0.36,0.09,0.42,skinMat,0,-0.755,0,true);
+      addB(grp,0.12,0.16,0.42,skinMat,sx*0.12,-0.88,0,true);
+      addB(grp,0.26,0.08,0.42,skinMat,sx*0.05,-0.98,0,true);
+    }
+    mkVoxelArm(armL,-1); mkVoxelArm(armR,1);
+    const head=new THREE.Group(); head.position.y=2.38; bodyPivot.add(head);
+    addB(head,1.76,1.44,1.44,headMat,0,0,-0.06,true);
+    addB(head,1.62,0.09,1.48,shadeMat,0,-0.765,-0.04,true);
+    addB(head,1.62,0.10,1.42,headMat,0,0.77,-0.05,true);
+    addB(head,1.36,1.06,0.08,skinMat,0,-0.04,0.67,true);
+    addB(head,1.76,0.25,0.18,headMat,0,0.595,0.75,true);
+    addB(head,1.76,0.17,0.18,headMat,0,-0.635,0.75,true);
+    for(const sx of [-1,1]) addB(head,0.20,1.06,0.18,headMat,sx*0.78,-0.04,0.75,true);
+    addB(head,0.62,0.10,0.16,headMat,0,0.43,0.74,true);
+    addB(head,0.38,0.10,0.16,headMat,0,0.34,0.74,true);
+    addB(head,0.18,0.10,0.16,headMat,0,0.25,0.74,true);
+    for(const sx of [-1,1]){
+      const ex=sx*0.36, ey=-0.01;
+      addB(head,0.40,0.24,0.06,darkMat,ex,ey,0.715,false);
+      addB(head,0.30,0.36,0.06,darkMat,ex,ey,0.715,false);
+      addB(head,0.20,0.42,0.06,darkMat,ex,ey,0.715,false);
+      addB(head,0.13,0.13,0.04,whiteMat,ex+0.05,ey+0.06,0.745,false);
+      addB(head,0.055,0.13,0.04,whiteMat,ex-0.145,ey+0.02,0.745,false);
+      addB(head,0.06,0.06,0.04,whiteMat,ex-0.05,ey-0.10,0.745,false);
+      addB(head,0.055,0.055,0.04,whiteMat,ex+0.13,ey-0.09,0.745,false);
+      addB(head,0.22,0.13,0.05,blushMat,sx*0.55,-0.22,0.715,false);
+    }
+    addB(head,0.16,0.19,0.26,noseMat,0,-0.15,0.85,true);
+    addB(head,0.14,0.06,0.05,darkMat,0,-0.34,0.72,false);
+    for(const sx of [-1,1]) addB(head,0.06,0.08,0.05,darkMat,sx*0.09,-0.28,0.72,false);
+    const cTiers=[[0.58,0.14,0.56,0.89,0.06],[0.50,0.14,0.48,1.03,0.02],[0.42,0.14,0.40,1.17,-0.02],[0.34,0.14,0.32,1.31,-0.06],[0.26,0.14,0.24,1.45,-0.10]];
+    for(const [w,h,d,py,pz] of cTiers) addB(head,w,h,d,headMat,0,py,pz,true);
+    const sTiers=[[0.38,0.13,0.44,0.885,0.04],[0.35,0.13,0.38,1.015,0.00],[0.31,0.13,0.32,1.145,-0.04],[0.27,0.13,0.26,1.275,-0.08]];
+    for(const sx of [-1,1]) for(const [w,h,d,py,pz] of sTiers) addB(head,w,h,d,headMat,sx*0.56,py,pz,true);
+    for(const sx of [-1,1]){
+      addB(head,0.14,0.56,0.56,headMat,sx*0.95,0.36,-0.04,true);
+      addB(head,0.12,0.44,0.44,headMat,sx*1.08,0.42,-0.04,true);
+      addB(head,0.10,0.30,0.32,headMat,sx*1.19,0.48,-0.04,true);
+      addB(head,0.12,0.42,0.48,headMat,sx*0.94,-0.16,-0.04,true);
+      addB(head,0.10,0.30,0.36,headMat,sx*1.05,-0.12,-0.04,true);
+      addB(head,0.08,0.18,0.24,headMat,sx*1.14,-0.08,-0.04,true);
+    }
+    addB(head,0.92,0.24,0.28,headMat,0,0.78,-0.62,true);
+    addB(head,0.64,0.24,0.26,headMat,0,0.96,-0.52,true);
+    addB(head,0.42,0.20,0.22,headMat,0,1.12,-0.42,true);
+    addB(head,1.26,0.72,0.16,headMat,0,0.20,-0.86,true);
+    addB(head,0.98,0.96,0.16,headMat,0,0.16,-0.86,true);
+    addB(head,0.72,1.14,0.16,headMat,0,0.08,-0.86,true);
+    addB(head,0.44,1.28,0.16,headMat,0,0.00,-0.86,true);
+    addB(head,0.94,0.58,0.16,shadeMat,0,0.24,-1.02,true);
+    addB(head,0.68,0.84,0.16,headMat,0,0.18,-1.02,true);
+    addB(head,0.44,1.04,0.16,headMat,0,0.10,-1.02,true);
+    addB(head,0.34,0.74,0.14,headMat,0,0.34,-1.16,true);
+    addB(head,0.24,0.46,0.10,shadeMat,0,0.36,-1.25,true);
+    root.scale.setScalar(0.8);
+    return {root,bodyPivot,head,mats,legL,legR,armL,armR,visorMat:skinMat,eyeMat:whiteMat};
+  }
   const headMat=M(C.head), bodyMat=M(C.body), armMat=M(C.arm), footMat=M(C.foot), beltMat=M(C.belt), darkMat=M(C.dark),
         visorMat=M(C.visor,{emissive:C.visor,emissiveIntensity:0.45}),
         eyeMat=M(C.eye,{emissive:C.eye,emissiveIntensity:0.7}),
@@ -1835,10 +1963,36 @@ class Fighter{
   }
   resetStats(){ this.kos=0; this.falls=0; this.dmgDealt=0; this.dmgTaken=0; }
 }
+let fighterPool=[];
+function assignActiveFighters(selectedIdx, tutorial){
+  if(selectedIdx===undefined||selectedIdx<0||selectedIdx>=CHARACTERS.length) selectedIdx=0;
+  const chosen=fighterPool[selectedIdx];
+  const others=[];
+  /* Always include Chog Viber among opponents if the player picked another fighter */
+  const spikyIdx=CHARACTERS.findIndex(c=>c.id==='spiky');
+  if(spikyIdx!==-1 && spikyIdx!==selectedIdx) others.push(fighterPool[spikyIdx]);
+  for(let i=0;i<fighterPool.length;i++){
+    if(i===selectedIdx || i===spikyIdx) continue;
+    others.push(fighterPool[i]);
+  }
+  const active=[chosen, others[0], others[1], others[2]];
+  fighters=active;
+  for(const pf of fighterPool){
+    if(!active.includes(pf)){ pf.isPlayer=false; pf.state='dead'; pf.group.visible=false; }
+  }
+  for(let i=0;i<4;i++){
+    fighters[i].index=i;
+  }
+  player=chosen;
+}
 function createFighters(){
-  fighters=[];
-  for(let i=0;i<4;i++){ const f=new Fighter(CHARACTERS[i],i); f.reset(spawnPoints[i][0],spawnPoints[i][2]); fighters.push(f); }
-  player=fighters[0];
+  fighterPool=[];
+  for(let i=0;i<CHARACTERS.length;i++){
+    const f=new Fighter(CHARACTERS[i],i);
+    fighterPool.push(f);
+  }
+  assignActiveFighters(4, false);
+  for(let i=0;i<4;i++){ fighters[i].reset(spawnPoints[i][0],spawnPoints[i][2]); }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1925,7 +2079,11 @@ function clearInput(){
 const touchBtn={jumpHeld:false,dashHeld:false,abilityHeld:false};
 const touch={stickActive:false,sx:0,sz:0,id:null};
 (function setupTouch(){
-  const isTouch=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+  /* Only a COARSE primary pointer gets the pad. A touchscreen laptop reports
+     maxTouchPoints>0 and ontouchstart in window, which is why the pad used to
+     appear on desktop. A mouse is a fine pointer, so it is excluded here. */
+  const isTouch = (navigator.maxTouchPoints>0 || 'ontouchstart' in window) &&
+                  (window.matchMedia ? window.matchMedia('(pointer:coarse)').matches : true);
   if(isTouch) document.getElementById('touch').classList.add('on');
   const stick=document.getElementById('stick');
   const knob=document.getElementById('knob');
@@ -2005,7 +2163,7 @@ const touch={stickActive:false,sx:0,sz:0,id:null};
   });
 })();
 
-const Game={ mode:'menu', over:false, paused:false, rotPaused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:0, difficulty:'medium', map:'dungeon', winner:null, victoryPhase:null, victoryT:0 };
+const Game={ mode:'menu', over:false, paused:false, rotPaused:false, countdown:0, matchTime:CFG.matchTime, hitStop:0, shake:0, camYaw:0, time:0, matchStartTime:0, playerSurvived:0, selectedChar:4, difficulty:'medium', map:'dungeon', winner:null, victoryPhase:null, victoryT:0 };
 createFighters();
 buildHazards();
 applyHazardsForDifficulty(Game.difficulty);
@@ -2194,6 +2352,14 @@ function applyEmotePose(f, t){
     m.armR.rotation.z = -0.5 - Math.sin(t*Math.PI*4)*0.25;
     m.armL.rotation.x = -0.4; m.armR.rotation.x = -0.4;
     m.head.rotation.y = Math.sin(t*Math.PI*3)*0.25;
+  } else if(id==='spiky'){
+    const hop = Math.abs(Math.sin(t*Math.PI*3))*0.55;
+    m.bodyPivot.position.y = hop;
+    m.bodyPivot.rotation.y = (t<0.45) ? (t/0.45)*TAU : Math.sin((t-0.45)*Math.PI*4)*0.25;
+    m.armL.rotation.x = -2.3; m.armR.rotation.x = -2.3;
+    m.armL.rotation.z = 0.45 + Math.sin(t*Math.PI*6)*0.2;
+    m.armR.rotation.z = -0.45 - Math.sin(t*Math.PI*6)*0.2;
+    m.head.rotation.z = Math.sin(t*Math.PI*4)*0.18;
   }
 }
 
@@ -2212,7 +2378,7 @@ function updateEmoteTransform(f, dt){
   applyEmotePose(f, t);
   if(!f._emoteBurstDone && t > 0.5){
     f._emoteBurstDone = true;
-    const colorsMap = { miner:[0xd23a2a,0xDFF902,0xA56BFF], moss:[0x8fffaa,0xDFF902,0xA56BFF], volt:[0xffe880,0xDFF902,0xA56BFF], phantom:[0x4ad0c0,0xDFF902,0xA56BFF] };
+    const colorsMap = { miner:[0xd23a2a,0xDFF902,0xA56BFF], moss:[0x8fffaa,0xDFF902,0xA56BFF], volt:[0xffe880,0xDFF902,0xA56BFF], phantom:[0x4ad0c0,0xDFF902,0xA56BFF], spiky:[0x9B59FF,0xCF4C70,0xDFF902] };
     const cols = colorsMap[f.def.id] || [0xDFF902,0xA56BFF];
     for(let i=0;i<22;i++){ burst(f.pos.x + rand(-1.2,1.2), f.pos.y + 1.5 + rand(0,1.5), f.pos.z + rand(-1.2,1.2), cols[i%cols.length], 2, 9, 0.9, 1.1, true); }
     impactRing(f.pos.x, f.pos.y+1.2, f.pos.z, cols[0], 1.4);
@@ -2266,7 +2432,7 @@ function updateModelTransform(f,dt){
     m.head.rotation.y=lerp(m.head.rotation.y,0,0.15);
     m.bodyPivot.rotation.y=lerp(m.bodyPivot.rotation.y,0,0.15);
   }
-  if(f.abilityActive==='spark'){ m.armL.rotation.x=-1.6; m.armR.rotation.x=-1.6; }
+  if(f.abilityActive==='spark'){ m.armL.rotation.x=-1.6; m.armR.rotation.x=-1.6; m.bodyPivot.rotation.y+=dt*20; }
   if(f.abilityActive==='smash'){ m.armL.rotation.x=-2.6; m.armR.rotation.x=-2.6; m.bodyPivot.rotation.x=lerp(m.bodyPivot.rotation.x,0.3,0.3); }
   if(f.hitstun>0){ m.bodyPivot.rotation.x=lerp(m.bodyPivot.rotation.x,-0.45,0.28); }
   else if(f.abilityActive!=='smash'){ m.bodyPivot.rotation.x=lerp(m.bodyPivot.rotation.x,clamp(f.vy*0.012,-0.22,0.22),0.12); }
@@ -2433,6 +2599,16 @@ function useAbility(f){
       burst(f.pos.x,f.pos.y+1,f.pos.z,f.def.colors.accent,20,8,0.8,1);
       impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,f.def.colors.accent,1.4);
       Game.shake=Math.max(Game.shake,0.25);
+      break;
+    }
+    case 'spiky':{
+      f.abilityActive='spark'; f.abilityT=0.65;
+      f.invuln=Math.max(f.invuln,0.55); f.speedBuff=Math.max(f.speedBuff,1.2);
+      f.vx=fx*18; f.vz=fz*18; f.vy=Math.max(f.vy,5.5);
+      burst(f.pos.x,f.pos.y+1.1,f.pos.z,0x9B59FF,18,10,0.6,1.1);
+      burst(f.pos.x,f.pos.y+1.1,f.pos.z,0xCF4C70,12,8,0.55,0.9);
+      impactRing(f.pos.x,f.pos.y+1.1,f.pos.z,0x9B59FF,1.5);
+      Game.shake=Math.max(Game.shake,0.45);
       break;
     }
   }
@@ -2941,6 +3117,7 @@ function aiControl(f,dt){
     if((id==='miner'||id==='moss') && distTarget<4.0 && dyA<2.0) ctrl.ability=true;
     if(id==='volt' && distTarget>4.0 && distTarget<12 && inFront && dyA<2.5) ctrl.ability=true;
     if(id==='phantom' && ((distTarget<5 && dyA<2.0) || f.health<f.maxHealth*0.4)) ctrl.ability=true;
+    if(id==='spiky' && distTarget<4.6 && dyA<2.2) ctrl.ability=true;
   }
   if(wantPower && dist>4 && dist<10 && f.dashCd<=0 && Math.random()<0.05) ctrl.dash=true;
   /* while climbing, no dashing — it would lock movement and block the double jump */
@@ -3023,6 +3200,10 @@ function updateHUD(force){
 }
 
 function startMatch(charIndex, tutorial){
+  /* the UI already blocks this, but a modified client must not get the Chog
+     by calling startMatch(4) directly */
+  if(CHARACTERS[charIndex] && CHARACTERS[charIndex].id==='spiky' &&
+     !(window.ChogGate && ChogGate.state.holder)) charIndex=0;
   SFX.init(); SFX.resume();
   /* Hard boundary: drop any input still held from the menu or the previous
      match, including the mobile held bits, so a finger resting on a control
@@ -3037,9 +3218,10 @@ function startMatch(charIndex, tutorial){
   if(tutorial) applyHazardsForDifficulty('easy');
   else applyHazardsForDifficulty(Game.difficulty);
   applyMap(Game.map);
+  assignActiveFighters(tutorial ? 0 : charIndex, tutorial);
   for(let i=0;i<4;i++){
     const f=fighters[i];
-    f.isPlayer=(i===charIndex);
+    f.isPlayer=(f===player);
     f.resetStats();
     f.reset(spawnPoints[i][0],spawnPoints[i][2],CFG.lives);
     f.group.visible=true;
@@ -3050,7 +3232,6 @@ function startMatch(charIndex, tutorial){
       else { f.state='dead'; f.group.visible=false; }
     }
   }
-  player=fighters[charIndex];
   if(tutorial){ player=fighters[0]; player.reset(0,3); }
   /* v4: shuffle the behaviours so a given Viber is not always the same type.
      Which Viber is which is hidden from the player until the results screen. */
@@ -3499,6 +3680,7 @@ function resetToMenu(){
   Music.stop();
   applyHazardsForDifficulty(Game.difficulty);
   applyMap(Game.map);
+  assignActiveFighters(Game.selectedChar, false);
   for(let i=0;i<4;i++){
     const f=fighters[i];
     f.isPlayer=false;
@@ -3509,7 +3691,6 @@ function resetToMenu(){
     f.reset(spawnPoints[i][0],spawnPoints[i][2]);
     f.invuln=0;
   }
-  player=fighters[Game.selectedChar];
   showScreen('scrMenu');
   updateMenuStats();
 }
@@ -3525,9 +3706,17 @@ function buildCharGrid(){
            '<span class="sl-v">'+value+'</span></div>';
   }
 
+  /* selectedChar defaults to the Chog (index 4). A non-holder must never open
+     the roster with it already chosen, or PLAY walks straight past the gate. */
+  const _chogIdx=CHARACTERS.findIndex(c=>c.id==='spiky');
+  const _holder=!!(window.ChogGate && ChogGate.state.holder);
+  if(!_holder && Game.selectedChar===_chogIdx) Game.selectedChar=0;
+
   CHARACTERS.forEach((c,i)=>{
     const el=document.createElement('div');
-    el.className='charCard'+(i===Game.selectedChar?' sel':'');
+    /* the Chog is visible to everyone, selectable only by a holder */
+    const locked=(c.id==='spiky') && !_holder;
+    el.className='charCard'+(i===Game.selectedChar?' sel':'')+(locked?' locked':'');
     el.dataset.i=i;
     const col='#'+c.colors.accent.toString(16).padStart(6,'0');
     el.innerHTML=
@@ -3535,8 +3724,9 @@ function buildCharGrid(){
 
         '<div class="cardFace cardFront">'+
           '<div class="charIcon" style="background:linear-gradient(135deg,'+col+'22,'+col+'44)">'+
-            '<img src="'+c.img+'" alt="'+c.name+'" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display=\'none\';">'+
+            '<img src="'+String(c.img).replace(/"/g,'&quot;')+'" alt="'+c.name+'" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display=\'none\';">'+
           '</div>'+
+          (locked?'<div class="lockBadge">HOLDERS</div>':'')+
           '<div class="cname">'+c.name+'</div>'+
           '<div class="ctag">'+c.tag+'</div>'+
           '<div class="statsText">'+
@@ -3598,6 +3788,10 @@ function buildCharGrid(){
       });
       el.addEventListener('pointerup',()=>{
         if(moved) return;
+        if(c.id==='spiky' && !(window.ChogGate && ChogGate.state.holder)){
+          try{ announce('HOLDERS ONLY \u00b7 CONNECT A WALLET WITH A CHOG'); }catch(e){}
+          return;
+        }
         Game.selectedChar=i;
         SFX.click();
         document.querySelectorAll('.charCard').forEach(x=>x.classList.remove('sel'));
@@ -3605,6 +3799,10 @@ function buildCharGrid(){
       });
     } else {
       el.addEventListener('click',()=>{
+        if(c.id==='spiky' && !(window.ChogGate && ChogGate.state.holder)){
+          try{ announce('HOLDERS ONLY \u00b7 CONNECT A WALLET WITH A CHOG'); }catch(e){}
+          return;
+        }
         Game.selectedChar=i;
         SFX.click();
         document.querySelectorAll('.charCard').forEach(x=>x.classList.remove('sel'));
@@ -4315,10 +4513,17 @@ syncOrientation();
 (function tagDeviceClass(){
   const b = document.body;
   if(!b) return;
-  b.classList.toggle('is-touch', DEV.touch);
+  /* DEV.touch is true on ANY touch-capable machine - a touchscreen laptop
+     reports maxTouchPoints>0 and an ontouchstart in window, which is exactly
+     why the pad used to appear on desktop. A mouse is a FINE pointer, so the
+     pad is gated on a coarse primary pointer instead (phones and tablets only). */
+  const coarse = window.matchMedia ? window.matchMedia('(pointer:coarse)').matches : false;
+  const touchish = (navigator.maxTouchPoints>0 || 'ontouchstart' in window) &&
+                   (coarse || Math.min(screen.width||9999, screen.height||9999) < 500);
+  b.classList.toggle('is-touch', touchish);
   b.classList.toggle('is-phone', DEV.phone);
   b.classList.toggle('is-tablet', DEV.tablet);
-  if(DEV.touch) document.getElementById('touch') && document.getElementById('touch').classList.add('on');
+  if(touchish) document.getElementById('touch').classList.add('on');
 })();
 
 /* Release every held input. Called when the page loses focus or is hidden --
@@ -4370,8 +4575,8 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   const params = new URLSearchParams(location.search);
   const target = params.get('emote');
   if(!target) return;
-  const idxById = { miner:0, moss:1, volt:2, phantom:3 };
-  const cycle = (target==='all') ? [0,1,2,3] : [idxById[target]];
+  const idxById = { miner:0, moss:1, volt:2, phantom:3, spiky:4 };
+  const cycle = (target==='all') ? [0,1,2,3,4] : [idxById[target]];
   if(!cycle.length || cycle[0]===undefined) return;
   screens.forEach(s=>{ const el=document.getElementById(s); if(el) el.classList.remove('on'); });
   ui.hud.classList.add('on');
@@ -4383,7 +4588,8 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   function playOne(){
     if(step >= cycle.length){ step = 0; setTimeout(playOne, 400); return; }
     const i = cycle[step++];
-    const w = fighters[i];
+    assignActiveFighters(i, false);
+    const w = player;
     for(const f of fighters){ if(f===w) continue; f.state='dead'; f.group.visible=false; }
     w.state='active'; w.reset(0, 0); w.health = w.maxHealth; w._emoteBurstDone = false;
     Game.winner = w; Game.victoryPhase = 'emote'; Game.victoryT = 0; Game.camYaw = 0;
@@ -4404,4 +4610,66 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
 
 
 
+
+<div id="trialsWrap" aria-hidden="true">
+  <iframe id="trialsFrame" title="Chog Trials" allow="autoplay; fullscreen"></iframe>
+  <div id="trialsLoad">LOADING CHOG TRIALS</div>
+  <button id="trialsBack" type="button">&#8592; VIBER BRAWL</button>
+</div>
+<script>window.CHOG_GATE_CONFIG = { privyAppId: 'cmvkwos1x007d0giaefmoqz2c' };</script>
+<script src="client-gate.js"></script>
+<script>
+(function(){
+  const wrap=document.getElementById('trialsWrap');
+  const frame=document.getElementById('trialsFrame');
+  const load=document.getElementById('trialsLoad');
+  const back=document.getElementById('trialsBack');
+  const btn=document.getElementById('btnTrials');
+  const SRC='/trials';
+  let open=false, booted=false;
+  const realRender=renderer.render.bind(renderer);
+  renderer.render=function(s,c){ if(!open) realRender(s,c); };
+  function openTrials(){
+    if(open) return;
+    open=true;
+    wrap.classList.add('on'); wrap.setAttribute('aria-hidden','false');
+    document.getElementById('hud').classList.remove('on');
+    Game.paused=true;
+    try{ Music.stop(); }catch(e){}
+    if(!booted){ load.style.display='grid'; frame.src=SRC; booted=true; }
+  }
+  function closeTrials(){
+    if(!open) return;
+    open=false;
+    wrap.classList.remove('on'); wrap.setAttribute('aria-hidden','true');
+    Game.paused=false;
+    try{ Music.start(); }catch(e){}
+    try{ updateMenuStats(); }catch(e){}
+  }
+  frame.addEventListener('load',function(){ load.style.display='none'; });
+  btn.addEventListener('click', async function(e){
+    e.stopPropagation();
+    /* fail closed: if the gate is missing or unreachable, the mode stays shut */
+    if(!window.ChogGate){ try{ announce('HOLDERS ONLY \u00b7 CHECKING'); }catch(err){} return; }
+    let ok=false;
+    try{ ok = await ChogGate.ensure(); }catch(err){ ok=false; }
+    if(ok){ openTrials(); return; }
+    const reason = (ChogGate.state && ChogGate.state.error) || '';
+    try{
+      announce(reason==='not_a_holder'
+        ? 'HOLDERS ONLY \u00b7 NO CHOG IN THIS WALLET'
+        : 'HOLDERS ONLY \u00b7 CONNECT YOUR CHOG');
+    }catch(err){}
+  });
+  back.addEventListener('click',function(e){ e.stopPropagation(); closeTrials(); });
+  window.addEventListener('chog-gate', function(){
+    const holder = !!(window.ChogGate && ChogGate.state.holder);
+    btn.classList.toggle('locked', !holder);
+    btn.querySelector('.tag').textContent = holder ? 'HOLDERS' : 'LOCKED';
+    try{ buildCharGrid(); }catch(err){}
+  });
+  window.addEventListener('message',function(e){ if(e.data && e.data.type==='chog-exit') closeTrials(); });
+  window.addEventListener('keydown',function(e){ if(open && e.code==='Escape') closeTrials(); });
+})();
+</script>
 </body></html>
