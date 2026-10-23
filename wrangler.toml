@@ -11,7 +11,9 @@ main = "worker.mjs"
 [assets]
 directory = "public"
 binding = "ASSETS"
-run_worker_first = ["/", "/index.html", "/api/*", "/trials", "/chog-trials.html", "/wrangler.toml"]
+# true = EVERY request goes through the Worker first, which then falls through
+# to the assets. Simpler than a path list, and there is no route left to forget.
+run_worker_first = true
 
 [vars]
 # public values - safe in the repo, they already ship inside the page
