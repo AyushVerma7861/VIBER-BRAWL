@@ -372,6 +372,7 @@ async function handleTrials(request, env) {
   const res = new Response(asset.body, asset);
   res.headers.set('cache-control', 'private, no-store, max-age=0');
   res.headers.set('x-robots-tag', 'noindex');
+  res.headers.set('content-type', 'text/html; charset=utf-8');
   res.headers.set('x-frame-options', 'SAMEORIGIN');
   res.headers.set('referrer-policy', 'no-referrer');
   return res;
@@ -394,7 +395,11 @@ export default {
       }
       /* The file is only ever reachable through /trials. Without this, a static
          asset binding serves it to anyone who guesses the name. */
-      if (path === '/chog-trials.html' || path.endsWith('/chog-trials.html')) {
+      /* Cloudflare rewrites *.html to a clean URL, so /chog-trials.html became
+         /chog-trials and slipped past the check. Block every alias, and the
+         asset itself now lives under a non-HTML name. */
+      const banned = /(^|\/)(chog-trials(\.html)?\/?|trials\.asset)$/i;  // every alias html_handling can mint
+      if (banned.test(path)) {
         return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
       }
       /* the repo root is served as static assets, so hide our own source */
@@ -403,9 +408,12 @@ export default {
       }
       /* the shell is served through here purely to attach security headers */
       if (path === '/' || path === '/index.html') {
-        const asset = await env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request));
+        /* pass the request through untouched. Rewriting it to /index.html made
+           Cloudflare redirect back to /, and we followed it forever. */
+        const asset = await env.ASSETS.fetch(request);
         const res = new Response(asset.body, asset);
-        res.headers.set('x-frame-options', 'SAMEORIGIN');
+        res.headers.set('content-type', 'text/html; charset=utf-8');
+  res.headers.set('x-frame-options', 'SAMEORIGIN');
         res.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
         res.headers.set('x-content-type-options', 'nosniff');
         res.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()');
