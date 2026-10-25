@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CHOG TRIALS — THE MACHINE</title>
+<title>CHOG TRIALS — THE MACHINE · BUILD 25.10.25</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   *{ box-sizing:border-box; }
@@ -208,6 +208,37 @@
     transform:rotate(-90deg); margin-bottom:6px; }
   .rl-t{ font:700 15px/1.2 'Space Grotesk',system-ui,sans-serif; letter-spacing:.16em; color:#F2EAFF; }
   .rl-s{ font:400 12px/1.55 'Space Grotesk',system-ui,sans-serif; color:rgba(242,234,255,.55); max-width:290px; }
+
+  /* ---- the receipt: the run, printed -------------------------------- */
+  #receiptWrap{ position:fixed; inset:0; z-index:60; display:none; place-items:center;
+    background:rgba(4,3,8,.74); backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px); }
+  #receiptWrap.on{ display:grid; }
+  .rcCol{ display:flex; flex-direction:column; align-items:center; gap:14px; }
+  @keyframes paperOut{
+    0%{ transform:translateY(30px) scale(.94) rotate(-1.2deg); opacity:0 }
+    62%{ transform:translateY(-5px) scale(1.012) rotate(.3deg); opacity:1 }
+    100%{ transform:none; opacity:1 } }
+  .rcPaper{ position:relative; width:min(330px,86vw); background:#F4F1E8; color:#1A1A16;
+    border-radius:3px 3px 0 0; padding:20px 18px 16px;
+    font-family:'JetBrains Mono',monospace;
+    box-shadow:0 30px 70px rgba(0,0,0,.66);
+    animation:paperOut .55s cubic-bezier(.2,.9,.25,1.1) both; }
+  .rcPaper::after{ content:''; position:absolute; left:0; right:0; bottom:-10px; height:10px;
+    background:repeating-linear-gradient(-45deg,#F4F1E8 0 7px,transparent 7px 14px); }
+  .rcHead{ text-align:center; font-size:12.5px; font-weight:700; letter-spacing:.18em; }
+  .rcSub{ text-align:center; font-size:9px; letter-spacing:.22em; color:#6B675C; margin:2px 0 11px; }
+  .rcRow{ display:flex; justify-content:space-between; align-items:baseline;
+    font-size:10px; letter-spacing:.05em; padding:4px 0; border-top:1px dashed #D3CDBC; }
+  .rcRow.first{ border-top:1px dashed #B9B3A3; }
+  .rcRow span:last-child{ font-weight:700; }
+  .rcStamp{ margin:13px 0 9px; text-align:center; font-size:9px; letter-spacing:.16em; color:#6B675C; }
+  .rcStamp.fail{ color:#A32D2D; }
+  .rcBtns{ display:flex; gap:8px; }
+  .rcBtns button{ border:0; border-radius:10px; padding:11px 14px; font-family:'Space Grotesk',system-ui,sans-serif;
+    font-size:11px; font-weight:700; letter-spacing:.1em; cursor:pointer; }
+  #rcShare{ background:#DFF902; color:#0C0F08; }
+  #rcSave{ background:#1A1A16; color:#F4F1E8; }
+  #rcClose{ background:transparent; color:#9B93B8; box-shadow:inset 0 0 0 2px rgba(255,255,255,.18); }
 </style>
 </head>
 <body>
@@ -258,6 +289,24 @@
   </div>
 </div>
 
+
+
+<div id="receiptWrap">
+  <div class="rcCol">
+    <div class="rcPaper">
+      <div class="rcHead">CHOG MART</div>
+      <div class="rcSub" id="rcSub">UNIT 07 &middot; AISLE 7</div>
+      <div id="rcRows"></div>
+      <div class="rcStamp" id="rcStamp">THANK YOU FOR SHOPPING</div>
+      <canvas id="rcBar" width="294" height="30" style="display:block;margin:0 auto"></canvas>
+    </div>
+    <div class="rcBtns">
+      <button id="rcShare" type="button">SHARE</button>
+      <button id="rcSave" type="button">SAVE</button>
+      <button id="rcClose" type="button">CLOSE</button>
+    </div>
+  </div>
+</div>
 
 <div id="fade"></div>
 
@@ -2236,6 +2285,149 @@ function endFight(win){
   startCine(win?'win':'lose');
 }
 
+/* ------------------------------ the receipt ------------------------------
+   The run, printed. The same numbers are drawn twice: into the DOM receipt
+   the player reads, and onto a 1080x1350 canvas they can post.
+   ---------------------------------------------------------------------- */
+function receiptData(win){
+  const time = Math.max(0.1, G.t);
+  const max  = P.max || 185;
+  /* health is measured in cans on the shelf: six of them, each worth max/6 */
+  const CANS = 6;
+  const per  = max / CANS;
+  const hp   = Math.max(0, Math.min(max, P.hp));
+  const lost = Math.min(CANS, Math.max(0, Math.ceil((max - hp) / per - 1e-6)));
+  const phase = Math.min(3, boss ? (boss.phase|0)+1 : 1);
+  const no = String(1000 + ((Math.round(time*10)*37 + lost*91 + phase*17) % 9000));
+  return { win:!!win, time:time, lost:lost, cans:CANS, max:max, phase:phase, no:no };
+}
+function receiptRows(d){
+  const rows = [
+    ['RESULT', d.win ? 'CLEARED' : 'FAILED'],
+    ['TIME', d.time.toFixed(1) + 's'],
+    ['CANS LOST', d.lost + ' of ' + d.cans],
+    ['PHASE', d.phase + ' of 3'],
+    ['RECEIPT', '#' + d.no]
+  ];
+  return rows.map(function(r,i){
+    return '<div class="rcRow'+(i===0?' first':'')+'"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>';
+  }).join('');
+}
+function rcBarcode(cv, seed){
+  const g=cv.getContext('2d'), w=cv.width, h=cv.height;
+  g.clearRect(0,0,w,h);
+  g.fillStyle='#1A1A16';
+  let x=3, rnd=seed||1234;
+  const next=function(){ rnd=(rnd*1103515245+12345)&0x7fffffff; return rnd/0x7fffffff; };
+  while(x<w-3){
+    const bw=1+Math.floor(next()*4);
+    if(next()>0.34) g.fillRect(x,0,bw,h);
+    x += bw + 1 + Math.floor(next()*2);
+  }
+}
+function receiptCanvas(d){
+  const W=1080, H=1350, cv=document.createElement('canvas');
+  cv.width=W; cv.height=H;
+  const g=cv.getContext('2d');
+  const bg=g.createRadialGradient(W/2,H*0.3,80,W/2,H*0.3,W*0.9);
+  bg.addColorStop(0,'#151024'); bg.addColorStop(1,'#08060E');
+  g.fillStyle=bg; g.fillRect(0,0,W,H);
+  const px=120, py=130, pw=W-px*2, ph=H-py-160;
+  g.fillStyle='#F4F1E8'; g.fillRect(px,py,pw,ph);
+  g.fillStyle='#6B675C';
+  for(let i=0;i<10;i++){ g.fillRect(px+i*14, py+ph, 14-i*0.6, 10); }
+  g.textAlign='center'; g.fillStyle='#1A1A16';
+  g.font='700 34px "JetBrains Mono", monospace';
+  g.fillText('CHOG MART', W/2, py+70);
+  g.fillStyle='#6B675C'; g.font='400 20px "JetBrains Mono", monospace';
+  g.fillText('UNIT 07 · AISLE 7', W/2, py+104);
+  const rows=[
+    ['RESULT', d.win?'CLEARED':'FAILED'],
+    ['TIME', d.time.toFixed(1)+'s'],
+    ['CANS LOST', d.lost+' of '+d.cans],
+    ['PHASE', d.phase+' of 3'],
+    ['RECEIPT', '#'+d.no]
+  ];
+  let y=py+170;
+  rows.forEach(function(r,i){
+    g.strokeStyle='#C9C3B2'; g.setLineDash([7,6]); g.beginPath();
+    g.moveTo(px+34,y-30); g.lineTo(px+pw-34,y-30); g.stroke(); g.setLineDash([]);
+    g.textAlign='left'; g.fillStyle='#4A473E'; g.font='400 22px "JetBrains Mono", monospace';
+    g.fillText(r[0], px+38, y);
+    g.textAlign='right'; g.fillStyle='#1A1A16'; g.font='700 26px "JetBrains Mono", monospace';
+    g.fillText(r[1], px+pw-38, y);
+    y+=58;
+  });
+  g.strokeStyle='#C9C3B2'; g.setLineDash([7,6]); g.beginPath();
+  g.moveTo(px+34,y-30); g.lineTo(px+pw-34,y-30); g.stroke(); g.setLineDash([]);
+  g.textAlign='center';
+  g.fillStyle = d.win ? '#6B675C' : '#A32D2D';
+  g.font='700 20px "JetBrains Mono", monospace';
+  g.fillText(d.win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS', W/2, y+46);
+  const bar=document.createElement('canvas'); bar.width=560; bar.height=70;
+  rcBarcode(bar, parseInt(d.no,10));
+  g.drawImage(bar, W/2-280, y+80);
+  g.fillStyle='#3A3730'; g.font='400 16px "JetBrains Mono", monospace';
+  g.fillText('CHOG TRIALS · VIBER BRAWL', W/2, py+ph-26);
+  return cv;
+}
+function receiptText(d){
+  return d.win
+    ? 'Cleared CHOG MART · UNIT 07 in ' + d.time.toFixed(1) + 's. ' + d.lost + ' cans lost.'
+    : 'The machine kept my stock. ' + d.time.toFixed(1) + 's, phase ' + d.phase + '.';
+}
+function receiptBlob(d){
+  return new Promise(function(res){ receiptCanvas(d).toBlob(res, 'image/png'); });
+}
+async function shareReceipt(){
+  const d = window.__lastReceipt; if(!d) return;
+  const blob = await receiptBlob(d);
+  const file = new File([blob], 'chog-mart-receipt.png', { type:'image/png' });
+  const text = receiptText(d);
+  if(navigator.canShare && navigator.canShare({ files:[file] })){
+    try{ await navigator.share({ files:[file], text:text }); return; }catch(e){ /* user cancelled */ }
+  }
+  saveReceiptBlob(blob);
+  try{ await navigator.clipboard.writeText(text); toast('SAVED · CAPTION COPIED', 2000); }
+  catch(e){ toast('SAVED', 1600); }
+}
+function saveReceiptBlob(blob){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='chog-mart-receipt.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+}
+async function saveReceipt(){
+  const d = window.__lastReceipt; if(!d) return;
+  saveReceiptBlob(await receiptBlob(d));
+  toast('RECEIPT SAVED', 1600);
+}
+function showReceipt(win){
+  const d = receiptData(win);
+  window.__lastReceipt = d;
+  document.getElementById('rcRows').innerHTML = receiptRows(d);
+  const stamp = document.getElementById('rcStamp');
+  stamp.textContent = win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS';
+  stamp.classList.toggle('fail', !win);
+  document.getElementById('rcSub').textContent = win ? 'UNIT 07 · AISLE 7' : 'UNIT 07 · AISLE 7 · TRANSACTION VOID';
+  rcBarcode(document.getElementById('rcBar'), parseInt(d.no,10));
+  document.getElementById('receiptWrap').classList.add('on');
+  document.getElementById('scrEnd').classList.remove('on');
+  document.getElementById('hud').classList.remove('on');
+}
+
+
+document.getElementById('rcShare').addEventListener('click', shareReceipt);
+document.getElementById('rcSave').addEventListener('click', saveReceipt);
+document.getElementById('rcClose').addEventListener('click', function(){
+  document.getElementById('receiptWrap').classList.remove('on');
+  document.getElementById('scrEnd').classList.add('on');
+});
+document.getElementById('btnAgain').addEventListener('click', function(){
+  document.getElementById('receiptWrap').classList.remove('on');
+});
+
 /* the card itself, once the outro has finished playing */
 function showResults(win){
   G.over=true; G.mode='end';
@@ -2246,7 +2438,8 @@ function showResults(win){
   document.getElementById('endSub').textContent = win
     ? 'The cabinet is empty. Nothing was left inside it.'
     : 'It still had stock. Watch the coins — those are the ones you jump.';
-  document.getElementById('scrEnd').classList.add('on');
+  /* the receipt is the result screen now; the old card stays behind CLOSE */
+  showReceipt(win);
 }
 
 /* --------------------------- player update ----------------------------- */
@@ -4300,7 +4493,7 @@ document.getElementById('btnHowPause').addEventListener('click',()=>openHow('pau
    override the rest of the game uses, so nothing here is a video file.
    ---------------------------------------------------------------------- */
 const CINE={ t:0, kind:null, base:null };
-const INTRO_LEN=5.9, WIN_LEN=4.8, LOSE_LEN=3.9;
+const INTRO_LEN=5.9, WIN_LEN=9.6, LOSE_LEN=7.0;
 
 function fadeTo(v,ms){
   const e=document.getElementById('fade');
@@ -4312,6 +4505,10 @@ function ss(a,b,x){ const k=Math.min(1,Math.max(0,(x-a)/(b-a))); return k*k*(3-2
 
 function startCine(kind){
   CINE.t=0; CINE.kind=kind;
+  /* a rematch must not inherit last match's props */
+  if(CINE.payout){ try{ scene.remove(CINE.payout.mesh); }catch(e){} }
+  if(CINE.shelf){ try{ scene.remove(CINE.shelf.mesh); }catch(e){} }
+  CINE.payout=null; CINE.shelf=null; CINE.err=null;
   const b=boss;
   if(!b) return;
   if(kind==='intro'){
@@ -4402,8 +4599,7 @@ function updateCine(dt){
 
   if(CINE.kind==='win'){
     const k=ss(0,WIN_LEN,t);
-    /* orbit the CABINET, not the arena centre - orbiting the centre swept the
-       camera straight through the player standing behind it */
+    /* orbit the CABINET, not the arena centre */
     const bx=b.pos.x, bz=b.pos.z, a=-0.55+1.70*k;
     CAM_OVERRIDE={ p:new THREE.Vector3(bx+Math.sin(a)*16.5, 6.2+2.4*k, bz+Math.cos(a)*16.5),
                    l:new THREE.Vector3(bx, 2.8-0.9*k, bz) };
@@ -4412,20 +4608,94 @@ function updateCine(dt){
     if(b.headerLight) b.headerLight.intensity=(CINE.base?CINE.base.hdr:2.2)*(1-ss(0.5,1.4,t));
     if(b.interiorLight) b.interiorLight.intensity=(CINE.base?CINE.base.inte:0.9)*(1-ss(0.9,1.8,t));
     if(b.rimLight) b.rimLight.intensity=(CINE.base?CINE.base.rim:1.4)*(1-ss(1.4,2.6,t));
-    /* the fall itself is animateMachine's death pose - do not fight it */
-    if(t>1.6&&t<1.65) toast('SOLD OUT',1400);
+
+    /* --- THE PAYOUT -----------------------------------------------------
+       It dies, the flap drops, and one can rolls out and stops. Then the
+       camera gives up on the machine and goes to look at the can. */
+    if(b.flap) b.flap.rotation.x = -1.32*ss(1.0,1.45,t);
+    if(t>=1.5 && !CINE.payout){
+      try{
+        const ci=(Math.random()*canCols.length)|0;
+        const built=makeCanMesh(canCols[ci], canFlavours[ci]);
+        built.group.scale.setScalar(1.15);
+        const fwd=new THREE.Vector3(Math.sin(b.heading),0,Math.cos(b.heading));
+        const origin=new THREE.Vector3(bx,0,bz).add(fwd.clone().multiplyScalar(0.9));
+        origin.y=1.45;
+        built.group.position.copy(origin);
+        scene.add(built.group);
+        CINE.payout={ mesh:built.group, origin:origin, fwd:fwd, born:t };
+      }catch(e){ CINE.payout=null; CINE.err='payout: '+e.message; console.error(CINE.err); }
+    }
+    if(CINE.payout){
+      const p0=CINE.payout, age=t-p0.born;
+      const roll=clamp(age/1.9,0,1);
+      const dist=0.9+2.6*roll;
+      const px=p0.origin.x+p0.fwd.x*dist, pz=p0.origin.z+p0.fwd.z*dist;
+      /* drop from the flap, bounce once, settle */
+      let py;
+      if(age<0.55){ py=1.45-(1.45-0.42)*ss(0,0.55,age); }
+      else if(age<1.05){ py=0.42+Math.abs(Math.sin((age-0.55)/0.5*Math.PI))*0.34*(1-ss(0.55,1.05,age)); }
+      else { py=0.42; }
+      p0.mesh.position.set(px,py,pz);
+      /* wobble as it comes to rest, then stop dead */
+      const wob=(age>1.0&&age<2.4)?Math.sin((age-1.0)*26)*(1-ss(1.0,2.4,age))*0.05:0;
+      p0.mesh.rotation.z=wob;
+      p0.mesh.rotation.x=-Math.PI*0.5*(1-clamp(age/0.55,0,1))*0.0;
+    }
+    /* the camera turns from the dead cabinet to the can on the floor */
+    const look=ss(3.4,5.2,t);
+    if(CINE.payout && look>0){
+      const p0=CINE.payout.mesh.position;
+      const cx=bx+Math.sin(a)*16.5, cz=bz+Math.cos(a)*16.5;
+      CAM_OVERRIDE={
+        p:new THREE.Vector3(cx+(p0.x-cx)*0.55*look, (6.2+2.4*k)*(1-look)+1.55*look, cz+(p0.z-cz)*0.55*look),
+        l:new THREE.Vector3(bx+(p0.x-bx)*look, (2.8-0.9*k)*(1-look)+0.55*look, bz+(p0.z-bz)*look)
+      };
+    }
+    if(t>2.2&&t<2.25) toast('THANK YOU', 1800);
     if(t>=WIN_LEN) endCine();
     return;
   }
 
   if(CINE.kind==='lose'){
     const k=ss(0,LOSE_LEN,t);
-    CAM_OVERRIDE={ p:new THREE.Vector3(Math.sin(-0.3)*7.5, 0.7+0.5*k, Math.cos(-0.3)*7.5),
-                   l:new THREE.Vector3(0, 5.0, 0) };
+    /* --- THE SHELF ------------------------------------------------------
+       It does not kill you. It shelves you. The camera pushes in through the
+       glass and finds one more can where the stock should be. */
+    const push=ss(0.6,4.2,t);
+    /* anchor on the MACHINE, not the world origin - it roams, and a camera
+       aimed at (0,0,0) filmed the wall whenever it wandered off centre */
+    const bf=new THREE.Vector3(Math.sin(b.heading),0,Math.cos(b.heading));
+    const bd=7.2-4.9*push;
+    CAM_OVERRIDE={ p:new THREE.Vector3(b.pos.x+bf.x*bd, 0.9+2.1*push, b.pos.z+bf.z*bd),
+                   l:new THREE.Vector3(b.pos.x, 4.6-1.3*push, b.pos.z) };
     if(b.ledMat){ const v=1-0.85*ss(0.2,1.6,t); b.ledMat.color.setRGB(v, v*0.35, v*0.3); }
     if(b.headerLight) b.headerLight.intensity=(CINE.base?CINE.base.hdr:2.2)*(1-0.8*ss(0.4,2.0,t));
     if(b.rimLight) b.rimLight.intensity=(CINE.base?CINE.base.rim:1.4)*(1-0.7*ss(0.8,2.4,t));
-    if(t>1.2&&t<1.25) toast('OUT OF ORDER',1400);
+    /* the interior comes up, dim, to show the shelf */
+    if(b.interiorLight) b.interiorLight.intensity=(CINE.base?CINE.base.inte:0.9)*(0.25+0.55*ss(1.2,2.6,t));
+
+    if(t>=1.4 && !CINE.shelf){
+      try{
+        const ci=Math.floor(Math.random()*canCols.length);
+        const built=makeCanMesh(canCols[ci], canFlavours[ci]);
+        built.group.scale.setScalar(0.92);
+        const fwd=new THREE.Vector3(Math.sin(b.heading),0,Math.cos(b.heading));
+        /* sit it in FRONT of the shelf plane, so it reads as newly placed
+           rather than as one more unit of stock */
+        const p0=new THREE.Vector3(b.pos.x,1.30,b.pos.z).add(fwd.clone().multiplyScalar(0.72));
+        built.group.position.copy(p0);
+        scene.add(built.group);
+        CINE.shelf={ mesh:built.group, y:1.30 };
+      }catch(e){ CINE.shelf=null; CINE.err='shelf: '+e.message; console.error(CINE.err); }
+    }
+    if(CINE.shelf){
+      /* it settles onto the shelf and stops moving. that is the whole joke. */
+      const s0=CINE.shelf, age=t-1.4;
+      s0.mesh.position.y=s0.y+0.14*(1-ss(0,0.5,age));
+      s0.mesh.rotation.z=0.04*(1-ss(0,0.6,age));
+    }
+    if(t>3.0&&t<3.05) toast('RESTOCKED', 1800);
     if(t>=LOSE_LEN) endCine();
     return;
   }
@@ -4436,6 +4706,7 @@ function skipCine(){
 }
 
 /* -------------------------------- boot --------------------------------- */
+console.log('%cCHOG TRIALS · BUILD 25.10.25 · cinematics v2 + receipt','color:#DFF902;background:#0B1220;padding:4px 8px;font-weight:700');
 document.getElementById('btnStart').addEventListener('click',()=>{
   unlockAudio();
   startFight();
@@ -4479,6 +4750,11 @@ document.getElementById('btnAgain').addEventListener('click',()=>{
 });
 
 /* debug hooks for headless verification */
+window.__receipt=(w)=>showResults(!!w);
+window.__cineAt=(t)=>{ CINE.t=t; };
+window.__cine=(k)=>startCine(k);
+window.__cineInfo=()=>({kind:CINE.kind,t:+CINE.t.toFixed(2),mode:G.mode,can:!!CINE.payout,shelf:!!CINE.shelf});
+window.__receiptCanvas=()=>receiptCanvas(window.__lastReceipt||receiptData(true));
 window.__M=()=>({
   mode:G.mode,
   boss: boss ? {
