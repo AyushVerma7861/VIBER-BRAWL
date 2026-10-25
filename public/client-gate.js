@@ -168,8 +168,11 @@
     catch { set({ error: 'login_failed' }); return false; }
   }
 
-  function logout() {
-    try { privy.logout(); } catch {}
+  async function logout() {
+    /* privy.logout() is async. Calling it without awaiting meant login() ran
+       while the old session was still alive, and Privy handed back the same
+       user - so "switch wallet" looked like a no-op. */
+    try { if (privy) await privy.logout(); } catch {}
     set({ authenticated: false, holder: false, wallet: null, count: 0, exp: 0 });
   }
 

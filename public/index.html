@@ -5006,13 +5006,27 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
     close: gateHide
   };
 
+  /* a wallet switch reloads the page; come straight back to the scan */
+  try{
+    if(sessionStorage.getItem('gate:reopen')){
+      sessionStorage.removeItem('gate:reopen');
+      setTimeout(function(){ gateIntent='trials'; gateReset(); gateShow('idle'); }, 700);
+    }
+  }catch(e){}
+
   document.getElementById('gateScanBtn').addEventListener('click', runScan);
   document.getElementById('gateRetry').addEventListener('click', async function(){
     /* "another wallet" means another ACCOUNT. linkWallet() attached a second
        wallet to the same Privy user, so ensure() re-checked the same person
        and the card never changed. Log out, let Privy show its picker, rescan. */
-    try{ ChogGate.logout(); }catch(e){}
-    await new Promise(function(r){ setTimeout(r, 400); });
+    try{ await ChogGate.logout(); }catch(e){}
+    await new Promise(function(r){ setTimeout(r, 350); });
+    /* if Privy still reports a live session, only a reload clears it */
+    if(ChogGate.state && ChogGate.state.authenticated){
+      try{ sessionStorage.setItem('gate:reopen','1'); }catch(e){}
+      location.reload();
+      return;
+    }
     gateReset();
     runScan();
   });
