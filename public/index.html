@@ -5008,8 +5008,13 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
 
   document.getElementById('gateScanBtn').addEventListener('click', runScan);
   document.getElementById('gateRetry').addEventListener('click', async function(){
-    if(ChogGate.linkWallet){ try{ await ChogGate.linkWallet(); }catch(e){} }
-    gateReset(); runScan();
+    /* "another wallet" means another ACCOUNT. linkWallet() attached a second
+       wallet to the same Privy user, so ensure() re-checked the same person
+       and the card never changed. Log out, let Privy show its picker, rescan. */
+    try{ ChogGate.logout(); }catch(e){}
+    await new Promise(function(r){ setTimeout(r, 400); });
+    gateReset();
+    runScan();
   });
   document.getElementById('gateEnter').addEventListener('click', function(){ clearTimeout(gateTimer); finishUnlock(); });
   document.getElementById('gateClose').addEventListener('click', function(e){ e.preventDefault(); gateHide(); });
