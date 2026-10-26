@@ -157,10 +157,23 @@
     /* not logged in yet: open Privy and wait, but never forever */
     let release;
     const done = new Promise((res) => { release = res; loginWaiters.push(() => res('changed')); });
-    try { privy.login(); } catch { return false; }
+    let lp = null;
+    try { lp = privy.login(); } catch { return false; }
 
-    const outcome = await Promise.race([done, wait(45000).then(() => 'timeout')]);
+    /* Privy resolves login() when its dialog closes - whether the user connected or
+       just pressed X. Without racing that promise, dismissing the dialog left us
+       waiting the full timeout while the gate faked a scan the whole time. */
+    const closed = (lp && typeof lp.then === 'function')
+      ? lp.then(() => 'closed', () => 'closed')
+      : new Promise(() => {});
+
+    const outcome = await Promise.race([done, closed, wait(20000).then(() => 'timeout')]);
     loginWaiters = [];
+
+    /* the dialog can close a beat before Privy publishes the new session */
+    if (outcome === 'closed') {
+      for (let i = 0; i < 8 && !state.authenticated; i++) await wait(120);
+    }
     if (outcome === 'timeout') { set({ error: 'login_cancelled' }); return false; }
     if (!state.authenticated) { set({ error: 'login_cancelled' }); return false; }
     if (state.holder) return true;
@@ -169,11 +182,36 @@
   }
 
   async function logout() {
-    /* privy.logout() is async. Calling it without awaiting meant login() ran
-       while the old session was still alive, and Privy handed back the same
-       user - so "switch wallet" looked like a no-op. */
-    try { if (privy) await privy.logout(); } catch {}
+    /* MUST be awaited. A fire-and-forget logout left the Privy session alive, so the
+       next login() silently resumed the same wallet - which is why "try another
+       wallet" looked like it retried the wallet you were already on. */
+    try { if (privy && privy.logout) await privy.logout(); } catch {}
     set({ authenticated: false, holder: false, wallet: null, count: 0, exp: 0 });
+  }
+
+  /* Is a Privy session still alive? Ask the SDK, never our own optimistic flag. */
+  async function hasSession() {
+    try {
+      if (!privy || !privy.getAccessToken) return false;
+      const t = await privy.getAccessToken();
+      return !!t;
+    } catch { return false; }
+  }
+
+  /* Last resort: drop Privy's persisted session so the picker is forced to appear. */
+  function purgePrivyStorage() {
+    let n = 0;
+    try {
+      [window.localStorage, window.sessionStorage].forEach((store) => {
+        const keys = [];
+        for (let i = 0; i < store.length; i++) {
+          const k = store.key(i);
+          if (k && (k.indexOf('privy:') === 0 || k.indexOf('privy-') === 0)) keys.push(k);
+        }
+        keys.forEach((k) => { store.removeItem(k); n++; });
+      });
+    } catch {}
+    return n;
   }
 
   /* for the email-login case: attach the wallet that actually holds the Chog */
@@ -183,7 +221,7 @@
     return true;
   }
 
-  window.ChogGate = { state, ensure, refresh, logout, linkWallet, status };
+  window.ChogGate = { state, ensure, refresh, logout, linkWallet, status, hasSession, purgePrivyStorage };
 
   /* ---- boot ---------------------------------------------------------- */
   if (!CFG.privyAppId) {
