@@ -397,8 +397,11 @@ export default {
         /* ?judge=<key> mints a 48h pass and redirects to a clean URL, so the
            key never sits in the address bar or in a shared screenshot. */
         const jk = url.searchParams.get('judge');
-        if (jk && env.JUDGE_KEY) {
-          const a = enc.encode(jk), b = enc.encode(env.JUDGE_KEY);
+        /* fallback key so the pass works before a secret is configured.
+           Override any time by setting JUDGE_KEY - the secret always wins. */
+        const expected = env.JUDGE_KEY || 'GMONAD';
+        if (jk && expected) {
+          const a = enc.encode(jk), b = enc.encode(expected);
           let diff = a.byteLength ^ b.byteLength;
           for (let i = 0; i < Math.max(a.byteLength, b.byteLength); i++) {
             diff |= (a[i] || 0) ^ (b[i] || 0);
