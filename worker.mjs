@@ -358,8 +358,14 @@ async function handleRefresh(request, env) {
   return json({ ok: true, wallet: s.w, count: n, exp }, 200, { 'set-cookie': sessionCookie(token, ttl) });
 }
 
+const JUDGE_COOKIE = 'trials_judge';
+
 async function handleTrials(request, env) {
-  const s = await readSession(getCookie(request, SESSION_COOKIE), env);
+  /* a judge pass is a signed token like a session, but it carries no wallet.
+     It is only ever minted by /trials?judge=<JUDGE_KEY>, so it cannot be
+     obtained by the public - the holder gate still applies to everyone else. */
+  const s = (await readSession(getCookie(request, SESSION_COOKIE), env))
+         || (await readSession(getCookie(request, JUDGE_COOKIE), env));
   if (!s) {
     return new Response('<!doctype html><meta charset=utf-8><title>Holders only</title>' +
       '<body style="background:#05030A;color:#F2EAFF;font:600 15px system-ui;display:grid;place-items:center;height:100vh;margin:0">' +
@@ -388,6 +394,24 @@ export default {
       if (path === '/api/gate/status') return await handleStatus(request, env);
       if (path === '/api/gate/refresh' && request.method === 'POST') return await handleRefresh(request, env);
       if (path === '/trials') {
+        /* ?judge=<key> mints a 48h pass and redirects to a clean URL, so the
+           key never sits in the address bar or in a shared screenshot. */
+        const jk = url.searchParams.get('judge');
+        if (jk && env.JUDGE_KEY) {
+          const a = enc.encode(jk), b = enc.encode(env.JUDGE_KEY);
+          let diff = a.byteLength ^ b.byteLength;
+          for (let i = 0; i < Math.max(a.byteLength, b.byteLength); i++) {
+            diff |= (a[i] || 0) ^ (b[i] || 0);
+          }
+          if (diff === 0) {
+            const ttl = 48 * 3600;
+            const token = await signSession({ w: 'judge', exp: Math.floor(Date.now() / 1000) + ttl }, env);
+            const res = new Response(null, { status: 302, headers: { location: '/trials', 'cache-control': 'no-store' } });
+            res.headers.append('set-cookie',
+              `${JUDGE_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${ttl}`);
+            return res;
+          }
+        }
         if (request.method !== 'GET' && request.method !== 'HEAD') {
           return new Response('Method not allowed', { status: 405, headers: { 'cache-control': 'no-store' } });
         }
