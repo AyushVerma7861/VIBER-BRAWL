@@ -374,7 +374,7 @@ async function handleTrials(request, env) {
       { status: 403, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   }
 
-  const asset = await env.ASSETS.fetch(new Request(new URL('/chog-trials.html', request.url), request));
+  const asset = await env.ASSETS.fetch(new Request(new URL('/trials.asset', request.url), request));
   const res = new Response(asset.body, asset);
   res.headers.set('cache-control', 'private, no-store, max-age=0');
   res.headers.set('x-robots-tag', 'noindex');
