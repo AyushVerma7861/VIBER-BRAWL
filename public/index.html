@@ -922,6 +922,16 @@
   @media (prefers-reduced-motion: reduce){
     .ct-beam, .ct-beam::after, .ct-dust i{ animation:none !important; }
   }
+
+@media (max-width:1100px){
+  #guideCard{
+    position:static; left:auto; right:auto; top:auto; transform:none;
+    width:min(420px,88vw); margin:18px auto 26px;
+    display:flex; flex-direction:column;
+  }
+  #guideCard .gc-screen{ aspect-ratio:16/9; height:auto; }
+  #guideCard .gc-screen video{ width:100%; height:100%; object-fit:cover; }
+}
 </style>
 </head>
 <body>
@@ -5167,6 +5177,16 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
 #guideCard .gc-title{font:800 13.5px/1 ui-monospace,monospace;letter-spacing:.14em;color:#f2edff}
 #guideCard .gc-sub{margin-top:6px;font:600 10px/1.45 ui-monospace,monospace;letter-spacing:.06em;color:#8f86ab}
 @media (max-width:1100px){#guideCard{display:none}}
+
+@media (max-width:1100px){
+  #guideCard{
+    position:static !important; left:auto !important; right:auto !important; top:auto !important; transform:none !important;
+    width:min(420px,88vw); margin:18px auto 26px;
+    display:flex !important; flex-direction:column;
+  }
+  #guideCard .gc-screen{ aspect-ratio:16/9; height:auto; }
+  #guideCard .gc-screen video{ width:100%; height:100%; object-fit:cover; }
+}
 </style>
 <script>
 (function(){
