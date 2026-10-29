@@ -5188,6 +5188,34 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   #guideCard .gc-screen{ aspect-ratio:16/9; height:auto; }
   #guideCard .gc-screen video{ width:100%; height:100%; object-fit:cover; }
 }
+
+@media (max-width:1100px),(max-height:560px){
+  #guideModal{ padding:0; }
+  #guideModal .gi{
+    width:min(1180px,96vw); max-height:96vh; max-height:96dvh;
+    display:flex; flex-direction:column;
+  }
+  #guideModal .gh{ padding:10px 64px 10px 14px; font-size:11px; }
+  #guideModal video{
+    width:auto; max-width:100%;
+    max-height:calc(96vh - 92px); max-height:calc(96dvh - 92px);
+    margin:0 auto;
+  }
+  #guideModal .gc{
+    position:fixed;
+    top:max(10px, env(safe-area-inset-top));
+    right:max(10px, env(safe-area-inset-right));
+    width:44px; height:44px; padding:0;
+    display:grid; place-items:center;
+    border-radius:999px;
+    background:rgba(12,10,22,.94);
+    border:1px solid rgba(255,255,255,.24);
+    color:#EDE9F5; font-size:26px; line-height:1;
+    z-index:9002; box-shadow:0 6px 20px rgba(0,0,0,.55);
+  }
+  #guideModal .gc:active{ transform:scale(.94); }
+}
+@media (max-height:430px){ #guideModal .gf{ display:none; } }
 </style>
 <script>
 (function(){
@@ -5195,6 +5223,19 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   function go(){ var b=document.getElementById('btnGuide'); if(b) b.click(); }
   c.addEventListener('click', go);
   c.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } });
+})();
+</script>
+<script>
+(function(){
+  var m=document.getElementById('guideModal'), v=document.getElementById('guideV');
+  if(!m) return;
+  function shut(){
+    m.classList.remove('on'); m.setAttribute('aria-hidden','true');
+    try{ if(v){ v.pause(); if(v.webkitDisplayingFullscreen && v.webkitExitFullscreen) v.webkitExitFullscreen(); } }catch(e){}
+    try{ if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }catch(e){}
+  }
+  m.addEventListener('click', function(e){ if(e.target===m) shut(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape' && m.classList.contains('on')) shut(); });
 })();
 </script>
 </body></html>
