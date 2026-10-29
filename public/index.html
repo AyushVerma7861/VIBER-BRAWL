@@ -5216,6 +5216,35 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   #guideModal .gc:active{ transform:scale(.94); }
 }
 @media (max-height:430px){ #guideModal .gf{ display:none; } }
+
+#guideModal{background:rgba(3,2,7,.94)}
+#guideModal .gi{background:#05040a;border:1px solid rgba(255,255,255,.10);box-shadow:0 40px 120px rgba(0,0,0,.8)}
+.gstage{position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:1 1 auto;min-height:0;height:min(68vh,620px)}
+@media (max-width:1100px),(max-height:560px){.gstage{height:calc(96dvh - 92px)}}
+.gstage video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+.gbig{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:76px;height:76px;border-radius:50%;border:1px solid rgba(255,255,255,.28);
+  background:rgba(10,9,18,.55);backdrop-filter:blur(8px);color:#F2EAFF;cursor:pointer;
+  display:grid;place-items:center;transition:opacity .2s,transform .2s;z-index:3}
+.gbig:hover{transform:translate(-50%,-50%) scale(1.05)}
+.gbig.off{opacity:0;pointer-events:none}
+.gbar{position:absolute;left:0;right:0;bottom:0;z-index:4;
+  display:flex;align-items:center;gap:12px;padding:14px 16px 16px;
+  background:linear-gradient(to top,rgba(3,2,7,.92),rgba(3,2,7,.55) 55%,transparent);
+  transition:opacity .25s}
+.gbar.hide{opacity:0;pointer-events:none}
+.gbtn{width:34px;height:34px;flex:0 0 34px;border:0;border-radius:9px;background:rgba(255,255,255,.08);
+  color:#EDE9F5;cursor:pointer;display:grid;place-items:center}
+.gbtn:hover{background:rgba(255,255,255,.16)}
+.gtrack{position:relative;flex:1;height:22px;display:flex;align-items:center;cursor:pointer}
+.gtrack:before{content:'';position:absolute;left:0;right:0;height:3px;border-radius:2px;background:rgba(255,255,255,.18)}
+.gfill{position:absolute;left:0;height:3px;border-radius:2px;background:#5CFFE7;width:0}
+.gdot{position:absolute;width:11px;height:11px;border-radius:50%;background:#5CFFE7;
+  box-shadow:0 0 0 4px rgba(92,255,231,.18);left:0;transform:translateX(-50%)}
+.gtime{font:600 11.5px/1 ui-monospace,monospace;color:#B9AED6;letter-spacing:.06em;white-space:nowrap}
+#guideX{background:rgba(10,9,18,.72);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.22);
+  color:#F2EAFF;font-size:20px;display:grid;place-items:center;transition:background .2s}
+#guideX:hover{background:rgba(255,255,255,.16)}
 </style>
 <script>
 (function(){
@@ -5236,6 +5265,92 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   }
   m.addEventListener('click', function(e){ if(e.target===m) shut(); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape' && m.classList.contains('on')) shut(); });
+})();
+</script>
+<script>
+(function(){
+  var m=document.getElementById('guideModal'), v=document.getElementById('guideV');
+  if(!m||!v) return;
+  v.removeAttribute('controls');
+
+  var stage=document.createElement('div'); stage.className='gstage';
+  v.parentNode.insertBefore(stage, v); stage.appendChild(v);
+
+  var svgPlay='<svg viewBox="0 0 24 24" width="22" height="22"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+  var svgPause='<svg viewBox="0 0 24 24" width="22" height="22"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>';
+  var svgMute='<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>';
+  var svgSound='<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>';
+  var svgFs='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+
+  var big=document.createElement('button'); big.className='gbig'; big.setAttribute('aria-label','Play');
+  big.innerHTML='<svg viewBox="0 0 24 24" width="30" height="30"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+  stage.appendChild(big);
+
+  var bar=document.createElement('div'); bar.className='gbar';
+  bar.innerHTML='<button class="gbtn gplay" aria-label="Play">'+svgPlay+'</button>'
+    +'<div class="gtrack"><div class="gfill"></div><div class="gdot"></div></div>'
+    +'<span class="gtime">0:00 / 0:00</span>'
+    +'<button class="gbtn gmute" aria-label="Mute">'+svgSound+'</button>'
+    +'<button class="gbtn gfs" aria-label="Fullscreen">'+svgFs+'</button>';
+  stage.appendChild(bar);
+
+  var playBtn=bar.querySelector('.gplay'), track=bar.querySelector('.gtrack'),
+      fill=bar.querySelector('.gfill'), dot=bar.querySelector('.gdot'),
+      timeEl=bar.querySelector('.gtime'), muteBtn=bar.querySelector('.gmute'),
+      fsBtn=bar.querySelector('.gfs');
+
+  function fmt(s){ if(!isFinite(s)) return '0:00'; var m2=Math.floor(s/60), r=Math.floor(s%60); return m2+':'+(r<10?'0':'')+r; }
+  function paint(){
+    var d=v.duration||0, c=v.currentTime||0, pct=d?(c/d*100):0;
+    fill.style.width=pct+'%'; dot.style.left=pct+'%';
+    timeEl.textContent=fmt(c)+' / '+fmt(d);
+    playBtn.innerHTML = v.paused ? svgPlay : svgPause;
+    big.classList.toggle('off', !v.paused);
+  }
+  function toggle(){ v.paused ? v.play().catch(function(){}) : v.pause(); }
+  big.addEventListener('click', toggle);
+  playBtn.addEventListener('click', toggle);
+  v.addEventListener('click', toggle);
+  v.addEventListener('timeupdate', paint);
+  v.addEventListener('loadedmetadata', paint);
+  v.addEventListener('play', function(){ paint(); bump(); });
+  v.addEventListener('pause', paint);
+
+  function seek(e){
+    var r=track.getBoundingClientRect();
+    var x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+    var p=Math.max(0,Math.min(1,x/r.width));
+    if(v.duration) v.currentTime=p*v.duration;
+    paint();
+  }
+  track.addEventListener('click', seek);
+  track.addEventListener('touchstart', function(e){ seek(e); }, {passive:true});
+
+  muteBtn.addEventListener('click', function(){
+    v.muted=!v.muted;
+    muteBtn.innerHTML = v.muted ? svgMute : svgSound;
+  });
+  fsBtn.addEventListener('click', function(){
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else if(stage.requestFullscreen){ stage.requestFullscreen(); }
+  });
+
+  var t;
+  function bump(){ bar.classList.remove('hide'); clearTimeout(t); t=setTimeout(function(){ if(!v.paused) bar.classList.add('hide'); }, 2800); }
+  stage.addEventListener('mousemove', bump);
+  stage.addEventListener('touchstart', bump, {passive:true});
+  m.addEventListener('click', bump);
+
+  var open=document.getElementById('guideCard');
+  if(open) open.addEventListener('click', function(){ setTimeout(function(){ paint(); bump(); }, 120); });
+  document.getElementById('guideX').addEventListener('click', function(){ v.pause(); });
+  document.addEventListener('keydown', function(e){
+    if(!m.classList.contains('on')) return;
+    if(e.key===' '){ e.preventDefault(); toggle(); }
+    if(e.key==='ArrowRight'){ v.currentTime=Math.min(v.duration||0,(v.currentTime||0)+5); }
+    if(e.key==='ArrowLeft'){ v.currentTime=Math.max(0,(v.currentTime||0)-5); }
+  });
+  paint();
 })();
 </script>
 </body></html>
