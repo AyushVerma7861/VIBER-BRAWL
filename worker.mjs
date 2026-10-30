@@ -497,6 +497,22 @@ async function handleRunStart(request, env) {
   const p = await playerFrom(request, env);
   if (!p) return json({ ok: false, reason: 'no_player' }, 401);
 
+  /* Identity is the session; entitlement is the balance. A wallet that sold
+     its Chog still has a valid session, so the holding is re-checked here -
+     once per run, not once per request. */
+  const wallet = await walletFrom(request, env);
+  if (wallet) {
+    let held = null;
+    try {
+      const bals = await balancesFor(wallet, env);
+      held = 0;
+      for (const v of bals.values()) held += Number(v) || 0;
+    } catch (e) {
+      held = null;   /* our RPC problem must not lock out a real holder */
+    }
+    if (held === 0) return json({ ok: false, reason: 'not_holder' }, 403);
+  }
+
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 20);
   await env.DB.prepare('INSERT INTO tickets (id, player_id, issued_at) VALUES (?, ?, ?)')
     .bind(id, p.w, Date.now()).run();
