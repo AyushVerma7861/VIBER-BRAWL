@@ -21,10 +21,10 @@
     + '.avg{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;'
     + 'padding:4px 22px 22px;overflow:auto}'
     + '.avtile{position:relative;border:1.5px solid rgba(255,255,255,.10);border-radius:12px;overflow:hidden;'
-    + 'background:#12101C;cursor:pointer;transition:border-color .18s,transform .18s;aspect-ratio:3/4}'
+    + 'background:#12101C;cursor:pointer;transition:border-color .18s,transform .18s;aspect-ratio:1}'
     + '.avtile:hover{border-color:rgba(92,255,231,.5);transform:translateY(-2px)}'
     + '.avtile.sel{border-color:#FFD36A;box-shadow:0 0 0 1px rgba(255,211,106,.4)}'
-    + '.avtile img{width:100%;height:100%;object-fit:cover;object-position:50% 30%;display:block}'
+    + '.avtile img{width:100%;height:100%;object-fit:contain;display:block}'
     + '.avtile .id{position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;'
     + 'font:700 10px/1 ui-monospace,monospace;letter-spacing:.08em;color:#F2EAFF;'
     + 'background:linear-gradient(to top,rgba(3,2,7,.92),transparent)}'
@@ -67,7 +67,7 @@
     var grid = tokens.map(function (id) {
       var sel = selected === id ? ' sel' : '';
       return '<div class="avtile' + sel + '" data-id="' + id + '">'
-        + '<img src="/api/avatar/' + id + '" alt="Chog ' + id + '" loading="lazy"'
+        + '<img src="/avatars/' + id + '.webp" alt="Chog ' + id + '" loading="lazy"'
         + ' onerror="this.style.display=\'none\';this.parentNode.querySelector(\'.ph\').style.display=\'grid\'">'
         + '<div class="ph" style="display:none">' + String(id).slice(0, 3) + '</div>'
         + '<div class="pick">&#10003;</div>'

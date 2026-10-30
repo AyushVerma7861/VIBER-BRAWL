@@ -87,7 +87,7 @@
       var place = k + 1;
       var cls = 'lbr' + (place <= 3 ? ' p' + place : '');
       var face = r.token_id
-        ? '<img class="face" src="/api/avatar/' + r.token_id + '" alt="" loading="lazy"'
+        ? '<img class="face" src="/avatars/' + r.token_id + '.webp" alt="" loading="lazy"'
           + ' onerror="this.outerHTML=\'<span class=&quot;face letter&quot;>' + esc(String(r.name).charAt(0)) + '</span>\'">'
         : '<span class="face letter">' + esc(String(r.name).charAt(0)) + '</span>';
       var idTag = r.token_id ? '<span class="tid">#' + String(r.token_id).padStart(4, '0') + '</span>' : '';

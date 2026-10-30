@@ -75,16 +75,16 @@
     + '.acchip{top:16px;left:16px;gap:8px;background:rgba(8,7,14,.78);border:1px solid rgba(255,255,255,.20);border-radius:5px;padding:6px 11px 6px 8px;font:600 10px/1 ui-monospace,monospace;color:rgba(242,234,255,.86);letter-spacing:.18em;text-transform:uppercase;backdrop-filter:blur(4px);transition:border-color .2s,background .2s}'
     + '.acchip:hover{border-color:rgba(255,255,255,.4);background:rgba(8,7,14,.8)}'
     + '.acchip .av{width:17px;height:17px;background:none;border:1px solid rgba(242,234,255,.42);font:700 8.5px/1 ui-monospace,monospace;color:rgba(242,234,255,.9);letter-spacing:0}'
-    + '.acchip .st{color:rgba(242,234,255,.38);font-size:9.5px;letter-spacing:.16em}'
+    + '.acchip .st{color:rgba(242,234,255,.38);font-size:10px;letter-spacing:.16em}'
 
   /* chip dressed in the trials UI's language: square, uppercase, hairline */
-  CSS += '.acchip{position:fixed;top:18px;left:18px;z-index:800;display:flex;align-items:center;gap:11px;'
+  CSS += '.acchip{position:fixed;top:18px;left:18px;z-index:800;display:flex;align-items:center;gap:12px;'
     + 'background:rgba(8,7,14,.62);border:1px solid rgba(255,255,255,.26);border-radius:9px;'
-    + 'padding:8px 16px 8px 8px;font:600 12.5px/1 ui-monospace,monospace;color:#F2EAFF;'
+    + 'padding:9px 18px 9px 9px;font:600 13.5px/1 ui-monospace,monospace;color:#F2EAFF;'
     + 'cursor:pointer;letter-spacing:.14em;text-transform:uppercase;backdrop-filter:blur(6px);'
     + 'transition:border-color .2s,background .2s}'
     + '.acchip:hover{border-color:rgba(255,255,255,.42);background:rgba(8,7,14,.82)}'
-    + '.acchip .av{width:34px;height:34px;border-radius:8px;background:none;'
+    + '.acchip .av{width:42px;height:42px;border-radius:10px;background:none;'
     + 'border:1px solid rgba(255,255,255,.28);display:grid;place-items:center;object-fit:cover;object-position:50% 28%;'
     + 'font:700 15px/1 ui-monospace,monospace;color:rgba(242,234,255,.9);letter-spacing:0}'
     + '.acchip .st{color:rgba(242,234,255,.32);font-size:8.5px;letter-spacing:.14em}';
@@ -96,7 +96,7 @@
     + '.acchip:hover .pen{opacity:1}';
 
   CSS += '.acchip .av{object-fit:cover;border-radius:50%}'
-    + '.acchip .tid{font:700 11px/1 ui-monospace,monospace;color:#FFD36A;letter-spacing:.04em}'
+    + '.acchip .tid{font:700 12px/1 ui-monospace,monospace;color:#FFD36A;letter-spacing:.04em}'
     + '.acsheet button.av{background:rgba(255,211,106,.14);color:#FFD36A}';
 
   function style() {
@@ -208,7 +208,7 @@
   function paintChip() {
     if (!chip || !acct) return;
     var face = acct.avatarId
-      ? '<img class="av" src="/api/avatar/' + acct.avatarId + '" alt="" '
+      ? '<img class="av" src="/avatars/' + acct.avatarId + '.webp" alt="" '
         + 'onerror="this.outerHTML=\'<span class=\\\'av\\\'>' + acct.name.charAt(0) + '</span>\'">'
       : '<span class="av">' + acct.name.charAt(0) + '</span>';
     var idTag = acct.avatarId ? '<span class="tid">#' + String(acct.avatarId).padStart(4, '0') + '</span>' : '';
