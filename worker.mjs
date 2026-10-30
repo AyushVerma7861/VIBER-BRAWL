@@ -698,6 +698,44 @@ async function handlePickAvatar(request, env) {
 }
 
 
+
+/* ---------------------------------------------------------------- sweep
+   A player can sell their Chog and never come back, leaving a stale avatar
+   on the board. Waiting for them to press Enter only fixes the ones who
+   return, so a scheduled job checks every row that still claims a token. */
+async function sweepAvatars(env) {
+  const { results } = await env.DB.prepare(
+    'SELECT id, wallet, token_id FROM players WHERE token_id IS NOT NULL AND wallet IS NOT NULL LIMIT 40'
+  ).all();
+
+  let cleared = 0, checked = 0, skipped = 0;
+  for (const row of results || []) {
+    checked++;
+    let held = null;
+    try {
+      const bals = await balancesFor(row.wallet, env);
+      held = 0;
+      for (const v of bals.values()) held += Number(v) || 0;
+    } catch (e) {
+      skipped++;          /* RPC trouble is not proof they sold */
+      continue;
+    }
+    if (held === 0) {
+      await env.DB.prepare('UPDATE players SET token_id = NULL, avatar_key = NULL WHERE id = ?')
+        .bind(row.id).run();
+      cleared++;
+    }
+  }
+  return { checked: checked, cleared: cleared, skipped: skipped };
+}
+
+/* GET /api/admin/sweep?key=... - run the same job on demand */
+async function handleSweep(request, env, url) {
+  const key = url.searchParams.get('key');
+  if (!key || key !== (env.WARM_KEY || 'warm-local')) return new Response('no', { status: 404 });
+  return json(Object.assign({ ok: true }, await sweepAvatars(env)), 200, { 'cache-control': 'no-store' });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -707,6 +745,7 @@ export default {
       if (path === '/api/gate/session' && request.method === 'POST') return await handleSession(request, env);
       if (path === '/api/player' && request.method === 'POST') return await handlePlayer(request, env);
       if (path === '/api/me') return await handleMe(request, env);
+      if (path === '/api/admin/sweep') return await handleSweep(request, env, url);
       if (path === '/api/my-tokens') return await handleMyTokens(request, env);
       if (path === '/api/player/avatar' && request.method === 'POST') return await handlePickAvatar(request, env);
       if (path === '/api/leaderboard') return await handleBoard(request, env);
@@ -776,6 +815,11 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+
+  /* cron: see [triggers] in wrangler.toml */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(sweepAvatars(env));
   },
 };
 
