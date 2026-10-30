@@ -544,22 +544,6 @@ async function handleRunFinish(request, env) {
   if (elapsed < ms) return json({ ok: false, reason: 'impossible' }, 422);
   if (elapsed > TICKET_TTL_MS) return json({ ok: false, reason: 'ticket_expired' }, 422);
 
-  /* the ticket proved they were entitled at the start. They may have sold
-     mid-run, so the holding is asked once more before the time is recorded. */
-  const walletNow = await walletFrom(request, env);
-  if (walletNow) {
-    let stillHolds = null;
-    try {
-      const bals = await balancesFor(walletNow, env);
-      stillHolds = 0;
-      for (const v of bals.values()) stillHolds += Number(v) || 0;
-    } catch (e) { stillHolds = null; }
-    if (stillHolds === 0) {
-      await env.DB.prepare('UPDATE players SET token_id = NULL, avatar_key = NULL WHERE wallet = ?')
-        .bind(walletNow).run();
-      return json({ ok: false, reason: 'no_longer_holder' }, 403);
-    }
-  }
 
   await env.DB.prepare('UPDATE tickets SET used_at = ? WHERE id = ?').bind(Date.now(), ticket).run();
   await env.DB.prepare(
