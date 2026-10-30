@@ -293,18 +293,40 @@
     ensure: function (opts) {
       style();
       var wantChip = !opts || opts.chip !== false;
-      if (acct && acct.name) { syncPlayer(acct.name); if (wantChip && !chip) mountChip(); return Promise.resolve(acct); }
-      return firstRun().then(function (a) {
-        if (wantChip) mountChip();
-        /* right after naming, a holder should meet their Chog - not discover
-           it three taps deep later. The list is already prefetched. */
-        if (window.Avatar && window.Avatar.prefetch) {
-          window.Avatar.prefetch().then(function (d) {
-            if (d && d.ok && d.tokens && d.tokens.length && !a.avatarId) window.Avatar.open();
-          }).catch(function () {});
-        }
-        return a;
-      });
+
+      /* the server decides who you are: the wallet owns the account, so the
+         same wallet on any device gets the same name. localStorage is only a
+         paint cache now, never the truth. */
+      return fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (me) {
+          if (me && me.ok && me.name) {
+            acct = { id: null, name: me.name, email: (acct && acct.email) || null,
+                     avatarId: me.token_id || null, createdAt: (acct && acct.createdAt) || Date.now() };
+            save();
+            if (wantChip && !chip) mountChip();
+            return acct;
+          }
+          if (me && me.ok && !me.name) {
+            /* wallet known, no account yet - ask for a name */
+            return firstRun().then(function (a) {
+              if (wantChip) mountChip();
+              if (window.Avatar && window.Avatar.prefetch) {
+                window.Avatar.prefetch().then(function (d) {
+                  if (d && d.ok && d.tokens && d.tokens.length && !a.avatarId) window.Avatar.open();
+                }).catch(function () {});
+              }
+              return a;
+            });
+          }
+          /* no wallet (judge pass): keep the old local behaviour */
+          if (acct && acct.name) { if (wantChip && !chip) mountChip(); return acct; }
+          return firstRun().then(function (a) { if (wantChip) mountChip(); return a; });
+        })
+        .catch(function () {
+          if (acct && acct.name) { if (wantChip && !chip) mountChip(); return acct; }
+          return firstRun().then(function (a) { if (wantChip) mountChip(); return a; });
+        });
     },
     editName: editName,
     setAvatar: function (id) { if (!acct) return; acct.avatarId = id; save(); paintChip(); },

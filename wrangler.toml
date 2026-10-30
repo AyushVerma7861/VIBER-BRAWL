@@ -20,7 +20,7 @@ run_worker_first = true
 PRIVY_APP_ID = "cmvkwos1x007d0giaefmoqz2c"
 CHOG_CONTRACTS = "0xc96d31F8626c6D03Fae5dCD3d61e3FB9F4a73763"
 CHOG_STANDARD = "erc721"
-SESSION_TTL = "600"
+SESSION_TTL = "3600"
 
 # Leaderboard storage. Created 2026-10-30 in APAC.
 [[d1_databases]]

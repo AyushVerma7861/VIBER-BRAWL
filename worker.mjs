@@ -409,6 +409,13 @@ function playerCookie(token, ttl, secure) {
 }
 
 async function playerFrom(request, env) {
+  /* the wallet is the identity. One wallet, one row, on any device. */
+  const wallet = await walletFrom(request, env);
+  if (wallet) {
+    const row = await env.DB.prepare('SELECT id, name FROM players WHERE wallet = ?').bind(wallet).first();
+    return row ? { w: row.id, n: row.name, wallet: wallet } : null;
+  }
+  /* no wallet (judge pass): fall back to the cookie, unchanged */
   const p = await readSession(getCookie(request, PLAYER_COOKIE), env);
   return p && p.w && p.w.indexOf('p_') === 0 ? p : null;
 }
@@ -430,19 +437,31 @@ async function handlePlayer(request, env) {
   const name = cleanName(body && body.name);
   if (!name) return json({ ok: false, reason: 'bad_name' }, 400);
 
-  const existing = await playerFrom(request, env);
   const now = Date.now();
+  const wallet = await walletFrom(request, env);
 
-  if (existing) {
+  if (wallet) {
+    const row = await env.DB.prepare('SELECT id FROM players WHERE wallet = ?').bind(wallet).first();
+    if (row) {
+      await env.DB.prepare('UPDATE players SET name = ? WHERE wallet = ?').bind(name, wallet).run();
+      return json({ ok: true, id: row.id, name: name, renamed: true });
+    }
+    const id = 'p_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    await env.DB.prepare('INSERT INTO players (id, wallet, name, created_at) VALUES (?, ?, ?, ?)')
+      .bind(id, wallet, name, now).run();
+    return json({ ok: true, id: id, name: name, created: true });
+  }
+
+  /* judge pass: no wallet to own a row, keep the cookie-scoped account */
+  const existing = await readSession(getCookie(request, PLAYER_COOKIE), env);
+  const ttl = 60 * 60 * 24 * 180;
+  if (existing && existing.w && existing.w.indexOf('p_') === 0) {
     await env.DB.prepare('UPDATE players SET name = ? WHERE id = ?').bind(name, existing.w).run();
-    const ttl = 60 * 60 * 24 * 180;
     const token = await signSession({ w: existing.w, n: name, exp: Math.floor(now / 1000) + ttl }, env);
     return json({ ok: true, id: existing.w, name: name, renamed: true }, 200, { 'set-cookie': playerCookie(token, ttl, isHttps) });
   }
-
   const id = 'p_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   await env.DB.prepare('INSERT INTO players (id, name, created_at) VALUES (?, ?, ?)').bind(id, name, now).run();
-  const ttl = 60 * 60 * 24 * 180;
   const token = await signSession({ w: id, n: name, exp: Math.floor(now / 1000) + ttl }, env);
   return json({ ok: true, id: id, name: name, created: true }, 200, { 'set-cookie': playerCookie(token, ttl, isHttps) });
 }
@@ -452,7 +471,7 @@ async function handlePlayer(request, env) {
    caller always sees where they stand even when they are nowhere near it. */
 async function handleBoard(request, env) {
   const { results } = await env.DB.prepare(
-    'SELECT r.name, r.ms, p.token_id FROM runs r LEFT JOIN players p ON p.id = r.player_id '
+    'SELECT COALESCE(p.name, r.name) AS name, r.ms, p.token_id FROM runs r LEFT JOIN players p ON p.id = r.player_id '
     + 'ORDER BY r.ms ASC, r.created_at ASC LIMIT 5'
   ).all();
 
@@ -566,6 +585,16 @@ async function rpc(env, to, data) {
 }
 
 
+
+/* GET /api/me - who the server thinks you are, wallet first */
+async function handleMe(request, env) {
+  const wallet = await walletFrom(request, env);
+  if (!wallet) return json({ ok: false, reason: 'no_wallet' }, 401);
+  const row = await env.DB.prepare('SELECT id, name, token_id FROM players WHERE wallet = ?').bind(wallet).first();
+  return json({ ok: true, wallet: wallet, name: row ? row.name : null, token_id: row ? row.token_id : null },
+    200, { 'cache-control': 'no-store' });
+}
+
 /* GET /api/my-tokens - which Chogs this wallet holds */
 async function handleMyTokens(request, env) {
   const wallet = await walletFrom(request, env);
@@ -655,6 +684,7 @@ export default {
     try {
       if (path === '/api/gate/session' && request.method === 'POST') return await handleSession(request, env);
       if (path === '/api/player' && request.method === 'POST') return await handlePlayer(request, env);
+      if (path === '/api/me') return await handleMe(request, env);
       if (path === '/api/my-tokens') return await handleMyTokens(request, env);
       if (path === '/api/player/avatar' && request.method === 'POST') return await handlePickAvatar(request, env);
       if (path === '/api/leaderboard') return await handleBoard(request, env);
