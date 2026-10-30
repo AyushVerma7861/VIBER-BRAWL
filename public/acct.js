@@ -294,7 +294,17 @@
       style();
       var wantChip = !opts || opts.chip !== false;
       if (acct && acct.name) { syncPlayer(acct.name); if (wantChip && !chip) mountChip(); return Promise.resolve(acct); }
-      return firstRun().then(function (a) { if (wantChip) mountChip(); return a; });
+      return firstRun().then(function (a) {
+        if (wantChip) mountChip();
+        /* right after naming, a holder should meet their Chog - not discover
+           it three taps deep later. The list is already prefetched. */
+        if (window.Avatar && window.Avatar.prefetch) {
+          window.Avatar.prefetch().then(function (d) {
+            if (d && d.ok && d.tokens && d.tokens.length && !a.avatarId) window.Avatar.open();
+          }).catch(function () {});
+        }
+        return a;
+      });
     },
     editName: editName,
     setAvatar: function (id) { if (!acct) return; acct.avatarId = id; save(); paintChip(); },
