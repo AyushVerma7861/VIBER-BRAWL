@@ -510,7 +510,12 @@ async function handleRunStart(request, env) {
     } catch (e) {
       held = null;   /* our RPC problem must not lock out a real holder */
     }
-    if (held === 0) return json({ ok: false, reason: 'not_holder' }, 403);
+    if (held === 0) {
+      /* they sold: stop showing a Chog they no longer own */
+      await env.DB.prepare('UPDATE players SET token_id = NULL, avatar_key = NULL WHERE wallet = ?')
+        .bind(wallet).run();
+      return json({ ok: false, reason: 'not_holder' }, 403);
+    }
   }
 
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 20);
@@ -538,6 +543,23 @@ async function handleRunFinish(request, env) {
   const elapsed = Date.now() - t.issued_at;
   if (elapsed < ms) return json({ ok: false, reason: 'impossible' }, 422);
   if (elapsed > TICKET_TTL_MS) return json({ ok: false, reason: 'ticket_expired' }, 422);
+
+  /* the ticket proved they were entitled at the start. They may have sold
+     mid-run, so the holding is asked once more before the time is recorded. */
+  const walletNow = await walletFrom(request, env);
+  if (walletNow) {
+    let stillHolds = null;
+    try {
+      const bals = await balancesFor(walletNow, env);
+      stillHolds = 0;
+      for (const v of bals.values()) stillHolds += Number(v) || 0;
+    } catch (e) { stillHolds = null; }
+    if (stillHolds === 0) {
+      await env.DB.prepare('UPDATE players SET token_id = NULL, avatar_key = NULL WHERE wallet = ?')
+        .bind(walletNow).run();
+      return json({ ok: false, reason: 'no_longer_holder' }, 403);
+    }
+  }
 
   await env.DB.prepare('UPDATE tickets SET used_at = ? WHERE id = ?').bind(Date.now(), ticket).run();
   await env.DB.prepare(
