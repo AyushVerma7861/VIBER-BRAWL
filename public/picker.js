@@ -46,6 +46,19 @@
 
   var host = null, panel = null, tokens = [], selected = null;
 
+  /* Start the wallet lookup as soon as the page loads, not when the player
+     opens the picker. By the time they tap, the list is already in memory. */
+  var pending = null;
+  function prefetch() {
+    if (!pending) {
+      pending = fetch('/api/my-tokens', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; });
+    }
+    return pending;
+  }
+
+
   function build() {
     style();
     host = document.createElement('div');
@@ -106,8 +119,7 @@
     panel.querySelector('.avx').addEventListener('click', close);
     host.classList.add('on');
 
-    fetch('/api/my-tokens', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (r) { return r.json(); })
+    prefetch()
       .then(function (d) {
         if (!d || !d.ok) {
           if (d && d.reason === 'no_wallet') {
@@ -130,6 +142,10 @@
 
   function close() { if (host) host.classList.remove('on'); }
 
-  window.Avatar = { open: open, close: close };
+  window.Avatar = { open: open, close: close, prefetch: prefetch };
+
+  /* warm it immediately - the picker is the only thing that needs it */
+  if (document.readyState === 'complete') setTimeout(prefetch, 600);
+  else window.addEventListener('load', function () { setTimeout(prefetch, 600); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
 })();

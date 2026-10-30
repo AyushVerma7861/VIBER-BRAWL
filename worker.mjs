@@ -190,12 +190,25 @@ async function balancesFor(wallet, env) {
     params: [{ to: c, data }, 'latest'],
   }));
 
-  const res = await fetch(env.CHAIN_RPC_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(batch),
-  });
-  if (!res.ok) throw new Error('rpc_http_' + res.status);
+  /* same fallback as rpc(): the configured node can revert or stall on calls
+     the public one answers normally */
+  const endpoints = [];
+  if (env.CHAIN_RPC_URL) endpoints.push(env.CHAIN_RPC_URL);
+  endpoints.push('https://rpc.monad.xyz');
+
+  let res = null;
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(3000),
+        body: JSON.stringify(batch),
+      });
+      if (r.ok) { res = r; break; }
+    } catch (e) { /* next endpoint */ }
+  }
+  if (!res) throw new Error('rpc_unreachable');
   const body = await res.json();
 
   /* A node that refuses batches returns one object instead of an array.
@@ -540,6 +553,8 @@ async function rpc(env, to, data) {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        /* a stalled private node must not hold the request open */
+        signal: AbortSignal.timeout(3000),
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: to, data: data }, 'latest'] })
       });
       const j = await res.json();
