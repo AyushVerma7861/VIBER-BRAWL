@@ -440,6 +440,13 @@ async function handlePlayer(request, env) {
   const now = Date.now();
   const wallet = await walletFrom(request, env);
 
+  /* naming yourself requires getting through the gate first - a wallet
+     session, or a judge pass. Otherwise anyone could mint rows. */
+  if (!wallet) {
+    const judge = await readSession(getCookie(request, 'trials_judge'), env);
+    if (!judge) return json({ ok: false, reason: 'no_session' }, 401);
+  }
+
   if (wallet) {
     const row = await env.DB.prepare('SELECT id FROM players WHERE wallet = ?').bind(wallet).first();
     if (row) {
