@@ -72,28 +72,32 @@
     + 'margin-top:4px;font:700 11.5px/1 system-ui,sans-serif;background:rgba(255,255,255,.06);'
     + 'color:#EDE9F5;cursor:pointer}'
     + '.acsheet button:hover{background:rgba(255,255,255,.12)}';
-    + '.acchip{top:16px;left:16px;gap:8px;background:rgba(8,7,14,.62);border:1px solid rgba(255,255,255,.20);border-radius:5px;padding:6px 11px 6px 8px;font:600 10px/1 ui-monospace,monospace;color:rgba(242,234,255,.86);letter-spacing:.18em;text-transform:uppercase;backdrop-filter:blur(4px);transition:border-color .2s,background .2s}'
+    + '.acchip{top:16px;left:16px;gap:8px;background:rgba(8,7,14,.78);border:1px solid rgba(255,255,255,.20);border-radius:5px;padding:6px 11px 6px 8px;font:600 10px/1 ui-monospace,monospace;color:rgba(242,234,255,.86);letter-spacing:.18em;text-transform:uppercase;backdrop-filter:blur(4px);transition:border-color .2s,background .2s}'
     + '.acchip:hover{border-color:rgba(255,255,255,.4);background:rgba(8,7,14,.8)}'
     + '.acchip .av{width:17px;height:17px;background:none;border:1px solid rgba(242,234,255,.42);font:700 8.5px/1 ui-monospace,monospace;color:rgba(242,234,255,.9);letter-spacing:0}'
-    + '.acchip .st{color:rgba(242,234,255,.32);font-size:8.5px;letter-spacing:.14em}'
+    + '.acchip .st{color:rgba(242,234,255,.38);font-size:9.5px;letter-spacing:.16em}'
 
   /* chip dressed in the trials UI's language: square, uppercase, hairline */
-  CSS += '.acchip{position:fixed;top:16px;left:16px;z-index:800;display:flex;align-items:center;gap:8px;'
-    + 'background:rgba(8,7,14,.62);border:1px solid rgba(255,255,255,.20);border-radius:5px;'
-    + 'padding:6px 11px 6px 8px;font:600 10px/1 ui-monospace,monospace;color:rgba(242,234,255,.86);'
-    + 'cursor:pointer;letter-spacing:.18em;text-transform:uppercase;backdrop-filter:blur(4px);'
+  CSS += '.acchip{position:fixed;top:18px;left:18px;z-index:800;display:flex;align-items:center;gap:11px;'
+    + 'background:rgba(8,7,14,.62);border:1px solid rgba(255,255,255,.26);border-radius:9px;'
+    + 'padding:8px 16px 8px 8px;font:600 12.5px/1 ui-monospace,monospace;color:#F2EAFF;'
+    + 'cursor:pointer;letter-spacing:.14em;text-transform:uppercase;backdrop-filter:blur(6px);'
     + 'transition:border-color .2s,background .2s}'
     + '.acchip:hover{border-color:rgba(255,255,255,.42);background:rgba(8,7,14,.82)}'
-    + '.acchip .av{width:17px;height:17px;border-radius:50%;background:none;'
-    + 'border:1px solid rgba(242,234,255,.42);display:grid;place-items:center;'
-    + 'font:700 8.5px/1 ui-monospace,monospace;color:rgba(242,234,255,.9);letter-spacing:0}'
+    + '.acchip .av{width:34px;height:34px;border-radius:8px;background:none;'
+    + 'border:1px solid rgba(255,255,255,.28);display:grid;place-items:center;object-fit:cover;object-position:50% 28%;'
+    + 'font:700 15px/1 ui-monospace,monospace;color:rgba(242,234,255,.9);letter-spacing:0}'
     + '.acchip .st{color:rgba(242,234,255,.32);font-size:8.5px;letter-spacing:.14em}';
 
   CSS += '.acchip{transition:opacity .28s ease,transform .28s ease,border-color .2s,background .2s}'
     + '.acchip .av{transition:border-color .2s,color .2s}'
     + '.acchip:hover .av{border-color:rgba(92,255,231,.7);color:#5CFFE7}'
-    + '.acchip .pen{opacity:0;transition:opacity .2s;margin-left:2px;font-size:9px;color:rgba(242,234,255,.5)}'
+    + '.acchip .pen{opacity:0;transition:opacity .2s;margin-left:2px;font-size:11px;color:rgba(242,234,255,.5)}'
     + '.acchip:hover .pen{opacity:1}';
+
+  CSS += '.acchip .av{object-fit:cover;border-radius:50%}'
+    + '.acchip .tid{font:700 11px/1 ui-monospace,monospace;color:#FFD36A;letter-spacing:.04em}'
+    + '.acsheet button.av{background:rgba(255,211,106,.14);color:#FFD36A}';
 
   function style() {
     if (document.getElementById('acStyle')) return;
@@ -203,7 +207,12 @@
 
   function paintChip() {
     if (!chip || !acct) return;
-    chip.innerHTML = '<span class="av">' + acct.name.charAt(0) + '</span><span>' + acct.name + '</span>'
+    var face = acct.avatarId
+      ? '<img class="av" src="/api/avatar/' + acct.avatarId + '" alt="" '
+        + 'onerror="this.outerHTML=\'<span class=\\\'av\\\'>' + acct.name.charAt(0) + '</span>\'">'
+      : '<span class="av">' + acct.name.charAt(0) + '</span>';
+    var idTag = acct.avatarId ? '<span class="tid">#' + String(acct.avatarId).padStart(4, '0') + '</span>' : '';
+    chip.innerHTML = face + '<span>' + acct.name + '</span>' + idTag
       + '<span class="st">' + (acct.email ? 'saved' : 'guest') + '</span>'
       + '<span class="pen">&#9998;</span>';
     if (sheet) {
@@ -224,6 +233,7 @@
     sheet.className = 'acsheet';
     sheet.innerHTML = '<div class="row"><span>PLAYING AS</span><span id="acWho">—</span></div>'
       + '<div class="row"><span>EMAIL</span><span id="acMailRow">—</span></div>'
+      + '<button id="acAvatar" class="av">Choose avatar</button>'
       + '<button id="acLink">Add email</button>'
       + '<button id="acBoard">Leaderboard</button>';
     document.body.appendChild(sheet);
@@ -237,6 +247,10 @@
     });
     document.addEventListener('click', function () { sheet.classList.remove('on'); });
     sheet.addEventListener('click', function (e) { e.stopPropagation(); });
+    sheet.querySelector('#acAvatar').addEventListener('click', function () {
+      sheet.classList.remove('on');
+      if (window.Avatar) window.Avatar.open();
+    });
     sheet.querySelector('#acLink').addEventListener('click', function () {
       sheet.classList.remove('on');
       emailFlow();
@@ -283,6 +297,7 @@
       return firstRun().then(function (a) { if (wantChip) mountChip(); return a; });
     },
     editName: editName,
+    setAvatar: function (id) { if (!acct) return; acct.avatarId = id; save(); paintChip(); },
     linkEmail: emailFlow,
     paintChip: paintChip
   };

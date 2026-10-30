@@ -439,7 +439,8 @@ async function handlePlayer(request, env) {
    caller always sees where they stand even when they are nowhere near it. */
 async function handleBoard(request, env) {
   const { results } = await env.DB.prepare(
-    'SELECT name, ms FROM runs ORDER BY ms ASC, created_at ASC LIMIT 5'
+    'SELECT r.name, r.ms, p.token_id FROM runs r LEFT JOIN players p ON p.id = r.player_id '
+    + 'ORDER BY r.ms ASC, r.created_at ASC LIMIT 5'
   ).all();
 
   let you = null;
@@ -451,7 +452,8 @@ async function handleBoard(request, env) {
     if (best && best.ms) {
       const above = await env.DB.prepare('SELECT COUNT(*) AS c FROM runs WHERE ms < ?')
         .bind(best.ms).first();
-      you = { rank: (above ? above.c : 0) + 1, ms: best.ms };
+      const me = await env.DB.prepare('SELECT token_id FROM players WHERE id = ?').bind(p.w).first();
+      you = { rank: (above ? above.c : 0) + 1, ms: best.ms, token_id: me ? me.token_id : null };
     }
   }
 
@@ -501,6 +503,141 @@ async function handleRunFinish(request, env) {
   return json({ ok: true, rank: (above ? above.c : 0) + 1 });
 }
 
+
+/* ------------------------------------------------------------------ avatars */
+
+const IPFS_GATEWAYS = [
+  'https://gateway.pinata.cloud/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://ipfs.io/ipfs/'
+];
+const AVATAR_TTL = 60 * 60 * 24 * 30;   /* a month; the art never changes */
+
+/* the wallet the gate already verified - not a new login */
+async function walletFrom(request, env) {
+  const s = await readSession(getCookie(request, 'trials_session'), env);
+  if (s && s.w && s.w.indexOf('0x') === 0) return s.w.toLowerCase();
+  return null;
+}
+
+function decodeUintArray(hex) {
+  if (!hex || hex === '0x') return [];
+  const body = hex.slice(2);
+  const len = parseInt(body.slice(64, 128), 16);
+  const out = [];
+  for (let i = 0; i < len; i++) {
+    const word = body.slice(128 + i * 64, 192 + i * 64);
+    if (word.length < 64) break;
+    out.push(parseInt(word, 16));
+  }
+  return out;
+}
+
+async function rpc(env, to, data) {
+  const res = await fetch(env.CHAIN_RPC_URL || 'https://rpc.monad.xyz', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: to, data: data }, 'latest'] })
+  });
+  const j = await res.json();
+  if (j.error) throw new Error(j.error.message || 'rpc_error');
+  return j.result || '0x';
+}
+
+/* GET /api/my-tokens - which Chogs this wallet holds */
+async function handleMyTokens(request, env) {
+  const wallet = await walletFrom(request, env);
+  if (!wallet) return json({ ok: false, reason: 'no_wallet' }, 401);
+
+  try {
+    const raw = await rpc(env, env.CHOG_CONTRACTS, '0x8462151c' + '0'.repeat(24) + wallet.slice(2));
+    const ids = decodeUintArray(raw).slice(0, 60);
+    return json({ ok: true, wallet: wallet, tokens: ids }, 200, { 'cache-control': 'no-store' });
+  } catch (e) {
+    return json({ ok: false, reason: 'rpc_failed' }, 502);
+  }
+}
+
+/* GET /api/avatar/:id - cached art. First viewer pays the fetch, everyone
+   after them gets it from KV in milliseconds. */
+async function handleAvatar(request, env, id) {
+  if (!/^\d{1,6}$/.test(id)) return new Response('bad id', { status: 400 });
+  const key = 'av:' + id;
+
+  const hit = await env.CHOG_AVATARS.get(key, 'arrayBuffer');
+  if (hit) {
+    return new Response(hit, {
+      headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
+    });
+  }
+
+  let metaUrl = null;
+  try {
+    const uri = await rpc(env, env.CHOG_CONTRACTS, '0xc87b56dd' + id.toString(16).padStart(64, '0'));
+    const body = uri.slice(2);
+    const off = parseInt(body.slice(0, 64), 16) * 2;
+    const len = parseInt(body.slice(off, off + 64), 16);
+    const hex = body.slice(off + 64, off + 64 + len * 2);
+    let str = '';
+    for (let i = 0; i < hex.length; i += 2) str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    metaUrl = str;
+  } catch (e) {
+    return new Response('no metadata: ' + String(e && e.message || e), { status: 502 });
+  }
+
+  const path = metaUrl.replace('ipfs://', '');
+  let imgUrl = null;
+  for (const gw of IPFS_GATEWAYS) {
+    try {
+      const r = await fetch(gw + path, { cf: { cacheTtl: 86400 } });
+      if (!r.ok) continue;
+      const m = await r.json();
+      if (m && m.image) { imgUrl = m.image; break; }
+    } catch (e) { /* try the next gateway */ }
+  }
+  if (!imgUrl) return new Response('metadata unreachable', { status: 504 });
+
+  const imgPath = imgUrl.replace('ipfs://', '');
+  for (const gw of IPFS_GATEWAYS) {
+    try {
+      const r = await fetch(gw + imgPath);
+      if (!r.ok) continue;
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength < 100) continue;
+      await env.CHOG_AVATARS.put(key, buf, { expirationTtl: AVATAR_TTL });
+      return new Response(buf, {
+        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
+      });
+    } catch (e) { /* next gateway */ }
+  }
+  return new Response('image unreachable', { status: 504 });
+}
+
+/* POST /api/player/avatar {tokenId} - claim a Chog as your face */
+async function handlePickAvatar(request, env) {
+  const p = await playerFrom(request, env);
+  if (!p) return json({ ok: false, reason: 'no_player' }, 401);
+  const wallet = await walletFrom(request, env);
+  if (!wallet) return json({ ok: false, reason: 'no_wallet' }, 401);
+
+  const body = await request.json().catch(() => null);
+  const id = body && Number(body.tokenId);
+  if (!id || id < 1) return json({ ok: false, reason: 'bad_id' }, 400);
+
+  /* it has to actually be theirs - the client cannot be trusted with this */
+  try {
+    const raw = await rpc(env, env.CHOG_CONTRACTS, '0x6352211e' + id.toString(16).padStart(64, '0'));
+    const owner = '0x' + raw.slice(-40);
+    if (owner.toLowerCase() !== wallet) return json({ ok: false, reason: 'not_owner' }, 403);
+  } catch (e) {
+    return json({ ok: false, reason: 'rpc_failed' }, 502);
+  }
+
+  await env.DB.prepare('UPDATE players SET token_id = ?, avatar_key = ? WHERE id = ?')
+    .bind(id, 'av:' + id, p.w).run();
+  return json({ ok: true, tokenId: id, avatar: '/api/avatar/' + id });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -509,6 +646,9 @@ export default {
     try {
       if (path === '/api/gate/session' && request.method === 'POST') return await handleSession(request, env);
       if (path === '/api/player' && request.method === 'POST') return await handlePlayer(request, env);
+      if (path === '/api/my-tokens') return await handleMyTokens(request, env);
+      if (path === '/api/player/avatar' && request.method === 'POST') return await handlePickAvatar(request, env);
+      if (path.indexOf('/api/avatar/') === 0) return await handleAvatar(request, env, path.slice(12));
       if (path === '/api/leaderboard') return await handleBoard(request, env);
       if (path === '/api/run/start' && request.method === 'POST') return await handleRunStart(request, env);
       if (path === '/api/run/finish' && request.method === 'POST') return await handleRunFinish(request, env);

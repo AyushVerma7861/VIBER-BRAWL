@@ -27,3 +27,9 @@ SESSION_TTL = "600"
 binding = "DB"
 database_name = "chog-trials-lb"
 database_id = "b5dcc6f9-b51d-4d2f-80d4-75034c83cb51"
+
+# Avatar cache. R2 needs a card on file; KV does not, and these are small
+# images served rarely - a natural fit. Swap for R2 if it ever grows.
+[[kv_namespaces]]
+binding = "CHOG_AVATARS"
+id = "7b912b8a7db34af3980477e00e7f2bab"
