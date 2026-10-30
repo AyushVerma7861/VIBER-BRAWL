@@ -510,13 +510,13 @@ async function handleRunFinish(request, env) {
    datacenter IPs outright, which is why one that works from a laptop can fail
    from a Worker. Try a spread, with a timeout, and keep whichever answers. */
 const IPFS_GATEWAYS = [
-  'https://nftstorage.link/ipfs/',
-  'https://w3s.link/ipfs/',
-  'https://gateway.lighthouse.storage/ipfs/',
   'https://ipfs.filebase.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
+  'https://nftstorage.link/ipfs/',
+  'https://4everland.io/ipfs/',
+  'https://w3s.link/ipfs/',
   'https://dweb.link/ipfs/',
-  'https://4everland.io/ipfs/'
+  'https://gateway.lighthouse.storage/ipfs/'
 ];
 const GW_TIMEOUT = 7000;
 const AVATAR_TTL = 60 * 60 * 24 * 30;   /* a month; the art never changes */
@@ -571,6 +571,16 @@ function ipfsPath(u) {
   return String(u || '').replace(/^ipfs:\/\//, '').replace(/^\/+/, '');
 }
 
+
+function sniffType(buf) {
+  const b = new Uint8Array(buf.slice(0, 12));
+  if (b[0] === 0x89 && b[1] === 0x50) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
+  if (b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  if (b[0] === 0x47 && b[1] === 0x49) return 'image/gif';
+  return 'image/png';
+}
+
 async function gwFetch(path, asJson) {
   for (const gw of IPFS_GATEWAYS) {
     const ctrl = new AbortController();
@@ -603,10 +613,11 @@ async function handleAvatar(request, env, id) {
   const imgKey = 'av:' + id;
   const metaKey = 'meta:' + id;
 
-  const hit = await env.CHOG_AVATARS.get(imgKey, 'arrayBuffer');
-  if (hit) {
-    return new Response(hit, {
-      headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
+  const cached = await env.CHOG_AVATARS.getWithMetadata(imgKey, 'arrayBuffer');
+  if (cached && cached.value) {
+    const t = (cached.metadata && cached.metadata.type) || sniffType(cached.value);
+    return new Response(cached.value, {
+      headers: { 'content-type': t, 'cache-control': 'public, max-age=2592000, immutable' }
     });
   }
 
@@ -637,9 +648,10 @@ async function handleAvatar(request, env, id) {
   const buf = await gwFetch(ipfsPath(meta.image), false);
   if (!buf) return new Response('image unreachable from any gateway', { status: 504 });
 
-  await env.CHOG_AVATARS.put(imgKey, buf, { expirationTtl: 60 * 60 * 24 * 30 });
+  const type = sniffType(buf);
+  await env.CHOG_AVATARS.put(imgKey, buf, { expirationTtl: 60 * 60 * 24 * 30, metadata: { type: type } });
   return new Response(buf, {
-    headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
+    headers: { 'content-type': type, 'cache-control': 'public, max-age=2592000, immutable' }
   });
 }
 
