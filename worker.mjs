@@ -542,14 +542,26 @@ function decodeUintArray(hex) {
 }
 
 async function rpc(env, to, data) {
-  const res = await fetch(env.CHAIN_RPC_URL || 'https://rpc.monad.xyz', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: to, data: data }, 'latest'] })
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message || 'rpc_error');
-  return j.result || '0x';
+  /* the configured RPC reverts on some tokens that the public one answers
+     fine, so try both before believing the chain said no */
+  const urls = [];
+  if (env.CHAIN_RPC_URL) urls.push(env.CHAIN_RPC_URL);
+  urls.push('https://rpc.monad.xyz');
+
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: to, data: data }, 'latest'] })
+      });
+      const j = await res.json();
+      if (j.error) { lastErr = new Error(j.error.message || 'rpc_error'); continue; }
+      return j.result || '0x';
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('rpc_error');
 }
 
 /* GET /api/my-tokens - which Chogs this wallet holds */
