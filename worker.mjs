@@ -506,6 +506,106 @@ async function handleRunFinish(request, env) {
 
 /* ------------------------------------------------------------------ avatars */
 
+async function walletFrom(request, env) {
+  const s = await readSession(getCookie(request, 'trials_session'), env);
+  if (s && s.w && s.w.indexOf('0x') === 0) return s.w.toLowerCase();
+  return null;
+}
+
+
+function decodeUintArray(hex) {
+  if (!hex || hex === '0x') return [];
+  const body = hex.slice(2);
+  const len = parseInt(body.slice(64, 128), 16);
+  const out = [];
+  for (let i = 0; i < len; i++) {
+    const word = body.slice(128 + i * 64, 192 + i * 64);
+    if (word.length < 64) break;
+    out.push(parseInt(word, 16));
+  }
+  return out;
+}
+
+
+async function rpc(env, to, data) {
+  /* the configured RPC reverts on some tokens that the public one answers
+     fine, so try both before believing the chain said no */
+  const urls = [];
+  if (env.CHAIN_RPC_URL) urls.push(env.CHAIN_RPC_URL);
+  urls.push('https://rpc.monad.xyz');
+
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: to, data: data }, 'latest'] })
+      });
+      const j = await res.json();
+      if (j.error) { lastErr = new Error(j.error.message || 'rpc_error'); continue; }
+      return j.result || '0x';
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('rpc_error');
+}
+
+
+/* GET /api/my-tokens - which Chogs this wallet holds */
+async function handleMyTokens(request, env) {
+  const wallet = await walletFrom(request, env);
+  if (!wallet) return json({ ok: false, reason: 'no_wallet' }, 401);
+
+  try {
+    const raw = await rpc(env, env.CHOG_CONTRACTS, '0x8462151c' + '0'.repeat(24) + wallet.slice(2));
+    const ids = decodeUintArray(raw).slice(0, 60);
+    return json({ ok: true, wallet: wallet, tokens: ids }, 200, { 'cache-control': 'no-store' });
+  } catch (e) {
+    return json({ ok: false, reason: 'rpc_failed' }, 502);
+  }
+}
+
+
+function ipfsPath(u) {
+  return String(u || '').replace(/^ipfs:\/\//, '').replace(/^\/+/, '');
+}
+
+
+function sniffType(buf) {
+  const b = new Uint8Array(buf.slice(0, 12));
+  if (b[0] === 0x89 && b[1] === 0x50) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
+  if (b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  if (b[0] === 0x47 && b[1] === 0x49) return 'image/gif';
+  return 'image/png';
+}
+
+async function gwFetch(path, asJson) {
+  for (const gw of IPFS_GATEWAYS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), GW_TIMEOUT);
+    try {
+      const r = await fetch(gw + path, {
+        signal: ctrl.signal,
+        headers: { accept: asJson ? 'application/json' : 'image/*, */*' }
+      });
+      clearTimeout(timer);
+      if (!r.ok) continue;
+      if (asJson) {
+        const j = await r.json();
+        if (j && j.image) return j;
+      } else {
+        const b = await r.arrayBuffer();
+        if (b.byteLength > 500) return b;
+      }
+    } catch (e) {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
+
 /* POST /api/player/avatar {tokenId} - claim a Chog as your face */
 async function handlePickAvatar(request, env) {
   const p = await playerFrom(request, env);
