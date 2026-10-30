@@ -689,15 +689,32 @@ async function handleWarm(request, env, url) {
 
   const from = Number(url.searchParams.get('from') || 1);
   const to = Number(url.searchParams.get('to') || 10);
-  const out = { ok: true, done: [], failed: [] };
+  const tries = Number(url.searchParams.get('tries') || 2);
 
-  for (let id = from; id <= to; id++) {
-    const have = await env.CHOG_AVATARS.get('av:' + id);
-    if (have) { out.done.push(id); continue; }
-    try {
-      const r = await handleAvatar(new Request('https://x/api/avatar/' + id), env, String(id));
-      if (r.status === 200) out.done.push(id); else out.failed.push(id + ':' + r.status);
-    } catch (e) { out.failed.push(id + ':err'); }
+  async function one(id) {
+    if (await env.CHOG_AVATARS.get('av:' + id)) return 'cached';
+    for (let a = 0; a < tries; a++) {
+      try {
+        const r = await handleAvatar(new Request('https://x/api/avatar/' + id), env, String(id));
+        if (r.status === 200) return 'ok';
+      } catch (e) { /* next attempt */ }
+    }
+    return 'fail';
+  }
+
+  const ids = [];
+  for (let id = from; id <= to; id++) ids.push(id);
+
+  const out = { ok: true, cached: [], ok2: [], failed: [] };
+  /* four at a time keeps us inside the request budget without hammering */
+  for (let i = 0; i < ids.length; i += 4) {
+    const slice = ids.slice(i, i + 4);
+    const res = await Promise.all(slice.map(one));
+    res.forEach(function (r, k) {
+      if (r === 'cached') out.cached.push(slice[k]);
+      else if (r === 'ok') out.ok2.push(slice[k]);
+      else out.failed.push(slice[k]);
+    });
   }
   return json(out, 200, { 'cache-control': 'no-store' });
 }
