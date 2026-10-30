@@ -4963,11 +4963,26 @@ requestAnimationFrame(loop);
      refuses any time it could not have taken, so nothing here is trusted. */
   var runTicket = null, runStart = 0, runSent = false;
 
+  /* the game's own toast element, so a refusal reads like part of the game */
+  function say(msg) {
+    var el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('on');
+    setTimeout(function () { el.classList.remove('on'); }, 3200);
+  }
+
   function startRun() {
     runTicket = null; runSent = false; runStart = Date.now();
     fetch('/api/run/start', { method: 'POST', credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && d.ok) runTicket = d.ticket; })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (o) {
+        if (o.d && o.d.ok) { runTicket = o.d.ticket; return; }
+        /* no ticket means this run will not count - say so, do not let them
+           fight for nothing */
+        if (o.d && o.d.reason === 'not_holder') say('No Chog in this wallet — this run will not be recorded');
+        else if (o.d && o.d.reason === 'no_player') say('Sign in with a wallet to record this run');
+      })
       .catch(function () {});
   }
 
@@ -4979,10 +4994,13 @@ requestAnimationFrame(loop);
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticket: runTicket, ms: ms })
-    }).then(function (r) { return r.json(); }).then(function (d) {
+    }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (o) {
+      var d = o.d;
       if (d && d.ok) {
         var el = document.getElementById('endSub');
         if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
+      } else if (d && d.reason === 'no_longer_holder') {
+        say('That Chog left this wallet during the run — time not recorded');
       }
     }).catch(function () {});
   }
