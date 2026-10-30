@@ -274,7 +274,7 @@
       <div><b>DRAG</b> to look around</div><div><b>ESC</b> pause</div>
     </div>
     <div class="pauseRow" style="margin-bottom:11px">
-      <button class="go ghost" id="btnHowStart">How to play</button>
+      <button class="go ghost" id="btnHowStart">How to play</button><button class="go ghost" id="btnBoard">Leaderboard</button>
     </div>
     <button class="go" id="btnStart">Enter the block</button>
   </div>
@@ -285,7 +285,7 @@
     <div class="kicker" id="endKicker">RESULT</div>
     <h1 id="endTitle">—</h1>
     <p id="endSub">—</p>
-    <button class="go" id="btnAgain">Fight again</button>
+    <button class="go" id="btnAgain">Fight again</button><button class="go ghost" id="btnBoardEnd" style="margin-top:9px">See the board</button>
   </div>
 </div>
 
@@ -4946,6 +4946,71 @@ function touchUI(){
 })();
 
 requestAnimationFrame(loop);
+</script>
+<script src="acct.js"></script>
+<script src="lb.js"></script>
+<script>
+(function(){
+  window.__acctChipEdit = true;
+  function boot(){ if(window.Acct) Acct.ensure(); }
+  if(document.readyState==='complete') setTimeout(boot,500); else window.addEventListener('load',function(){ setTimeout(boot,500); });
+  function wire(id,fn){ var b=document.getElementById(id); if(b) b.addEventListener('click',fn); }
+  wire('btnBoard', function(e){ e.preventDefault(); if(window.LB) LB.open(); });
+  wire('btnBoardEnd', function(e){ e.preventDefault(); if(window.LB) LB.open(); });
+  /* ---------------------------------------------------------------- runs
+     The server owns the clock. It issues a ticket when the run starts and
+     refuses any time it could not have taken, so nothing here is trusted. */
+  var runTicket = null, runStart = 0, runSent = false;
+
+  function startRun() {
+    runTicket = null; runSent = false; runStart = Date.now();
+    fetch('/api/run/start', { method: 'POST', credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) runTicket = d.ticket; })
+      .catch(function () {});
+  }
+
+  function finishRun() {
+    if (runSent || !runTicket) return;
+    runSent = true;
+    var ms = Date.now() - runStart;
+    fetch('/api/run/finish', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: runTicket, ms: ms })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok) {
+        var el = document.getElementById('endSub');
+        if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
+      }
+    }).catch(function () {});
+  }
+
+  var startBtn = document.getElementById('btnStart');
+  if (startBtn) startBtn.addEventListener('click', startRun);
+
+  setInterval(function () {
+    var scr = document.getElementById('scrEnd');
+    if (!scr || !scr.classList.contains('on')) return;
+    var kicker = (document.getElementById('endKicker') || {}).textContent || '';
+    if (kicker.indexOf('CLEARED') !== -1) finishRun();
+  }, 500);
+
+  /* the chip belongs to the menus, not the fight */
+  (function(){
+    var last = null;
+    setInterval(function(){
+      var c = document.getElementById('acChip');
+      if (!c) return;
+      var onMenu = !!document.querySelector('.screen.on');
+      if (onMenu === last) return;
+      last = onMenu;
+      c.style.opacity = onMenu ? '1' : '0';
+      c.style.pointerEvents = onMenu ? 'auto' : 'none';
+      c.style.transform = onMenu ? 'translateY(0)' : 'translateY(-6px)';
+    }, 150);
+  })();
+})();
 </script>
 </body>
 </html>

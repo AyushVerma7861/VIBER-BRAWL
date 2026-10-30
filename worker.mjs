@@ -384,6 +384,123 @@ async function handleTrials(request, env) {
   return res;
 }
 
+
+/* ------------------------------------------------------------- leaderboard */
+
+const PLAYER_COOKIE = 'ct_player';
+const MIN_MS = 20000;            /* nobody clears the machine in under 20s */
+const TICKET_TTL_MS = 15 * 60 * 1000;
+
+function playerCookie(token, ttl, secure) {
+  return `${PLAYER_COOKIE}=${token}; HttpOnly; ${secure ? 'Secure; ' : ''}SameSite=Lax; Path=/; Max-Age=${ttl}`;
+}
+
+async function playerFrom(request, env) {
+  const p = await readSession(getCookie(request, PLAYER_COOKIE), env);
+  return p && p.w && p.w.indexOf('p_') === 0 ? p : null;
+}
+
+function cleanName(raw) {
+  const n = String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  /* reject rather than silently shorten - a server should never quietly
+     change the name someone chose */
+  return /^[A-Z0-9 _-]{1,12}$/.test(n) ? n : null;
+}
+
+/* POST /api/player {name} - creates on first call, renames after that */
+async function handlePlayer(request, env) {
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (limited('p:' + ip, 12, 60_000)) return json({ ok: false, reason: 'rate_limited' }, 429);
+
+  const isHttps = new URL(request.url).protocol === 'https:';
+  const body = await request.json().catch(() => null);
+  const name = cleanName(body && body.name);
+  if (!name) return json({ ok: false, reason: 'bad_name' }, 400);
+
+  const existing = await playerFrom(request, env);
+  const now = Date.now();
+
+  if (existing) {
+    await env.DB.prepare('UPDATE players SET name = ? WHERE id = ?').bind(name, existing.w).run();
+    const ttl = 60 * 60 * 24 * 180;
+    const token = await signSession({ w: existing.w, n: name, exp: Math.floor(now / 1000) + ttl }, env);
+    return json({ ok: true, id: existing.w, name: name, renamed: true }, 200, { 'set-cookie': playerCookie(token, ttl, isHttps) });
+  }
+
+  const id = 'p_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  await env.DB.prepare('INSERT INTO players (id, name, created_at) VALUES (?, ?, ?)').bind(id, name, now).run();
+  const ttl = 60 * 60 * 24 * 180;
+  const token = await signSession({ w: id, n: name, exp: Math.floor(now / 1000) + ttl }, env);
+  return json({ ok: true, id: id, name: name, created: true }, 200, { 'set-cookie': playerCookie(token, ttl, isHttps) });
+}
+
+/* GET /api/leaderboard - the top five, plus the caller's own rank.
+   Five because a short board reads as "new" rather than "empty", and the
+   caller always sees where they stand even when they are nowhere near it. */
+async function handleBoard(request, env) {
+  const { results } = await env.DB.prepare(
+    'SELECT name, ms FROM runs ORDER BY ms ASC, created_at ASC LIMIT 5'
+  ).all();
+
+  let you = null;
+  const p = await playerFrom(request, env);
+  if (p) {
+    const best = await env.DB.prepare(
+      'SELECT MIN(ms) AS ms FROM runs WHERE player_id = ?'
+    ).bind(p.w).first();
+    if (best && best.ms) {
+      const above = await env.DB.prepare('SELECT COUNT(*) AS c FROM runs WHERE ms < ?')
+        .bind(best.ms).first();
+      you = { rank: (above ? above.c : 0) + 1, ms: best.ms };
+    }
+  }
+
+  return json({ ok: true, rows: results || [], you: you }, 200, { 'cache-control': 'no-store' });
+}
+
+/* POST /api/run/start - issues a one-use ticket, stamped with the time */
+async function handleRunStart(request, env) {
+  const p = await playerFrom(request, env);
+  if (!p) return json({ ok: false, reason: 'no_player' }, 401);
+
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+  await env.DB.prepare('INSERT INTO tickets (id, player_id, issued_at) VALUES (?, ?, ?)')
+    .bind(id, p.w, Date.now()).run();
+  return json({ ok: true, ticket: id }, 200, { 'cache-control': 'no-store' });
+}
+
+/* POST /api/run/finish {ticket, ms} - only accepted if the run could have happened */
+async function handleRunFinish(request, env) {
+  const p = await playerFrom(request, env);
+  if (!p) return json({ ok: false, reason: 'no_player' }, 401);
+
+  const body = await request.json().catch(() => null);
+  const ms = body && Number(body.ms);
+  const ticket = body && String(body.ticket || '');
+  if (!ms || !ticket) return json({ ok: false, reason: 'bad_body' }, 400);
+  if (ms < MIN_MS) return json({ ok: false, reason: 'too_fast' }, 422);
+
+  const t = await env.DB.prepare('SELECT * FROM tickets WHERE id = ? AND player_id = ?')
+    .bind(ticket, p.w).first();
+  if (!t) return json({ ok: false, reason: 'bad_ticket' }, 422);
+  if (t.used_at) return json({ ok: false, reason: 'ticket_used' }, 422);
+
+  const elapsed = Date.now() - t.issued_at;
+  if (elapsed < ms) return json({ ok: false, reason: 'impossible' }, 422);
+  if (elapsed > TICKET_TTL_MS) return json({ ok: false, reason: 'ticket_expired' }, 422);
+
+  await env.DB.prepare('UPDATE tickets SET used_at = ? WHERE id = ?').bind(Date.now(), ticket).run();
+  await env.DB.prepare(
+    'INSERT INTO runs (player_id, name, ms, ticket_id, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).bind(p.w, p.n || 'PLAYER', ms, ticket, Date.now()).run();
+  await env.DB.prepare(
+    'UPDATE players SET best_ms = MIN(COALESCE(best_ms, ?), ?) WHERE id = ?'
+  ).bind(ms, ms, p.w).run();
+
+  const above = await env.DB.prepare('SELECT COUNT(*) AS c FROM runs WHERE ms < ?').bind(ms).first();
+  return json({ ok: true, rank: (above ? above.c : 0) + 1 });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -391,6 +508,10 @@ export default {
 
     try {
       if (path === '/api/gate/session' && request.method === 'POST') return await handleSession(request, env);
+      if (path === '/api/player' && request.method === 'POST') return await handlePlayer(request, env);
+      if (path === '/api/leaderboard') return await handleBoard(request, env);
+      if (path === '/api/run/start' && request.method === 'POST') return await handleRunStart(request, env);
+      if (path === '/api/run/finish' && request.method === 'POST') return await handleRunFinish(request, env);
       if (path === '/api/gate/status') return await handleStatus(request, env);
       if (path === '/api/gate/refresh' && request.method === 'POST') return await handleRefresh(request, env);
       if (path === '/trials') {

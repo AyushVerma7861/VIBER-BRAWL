@@ -21,3 +21,9 @@ PRIVY_APP_ID = "cmvkwos1x007d0giaefmoqz2c"
 CHOG_CONTRACTS = "0xc96d31F8626c6D03Fae5dCD3d61e3FB9F4a73763"
 CHOG_STANDARD = "erc721"
 SESSION_TTL = "600"
+
+# Leaderboard storage. Created 2026-10-30 in APAC.
+[[d1_databases]]
+binding = "DB"
+database_name = "chog-trials-lb"
+database_id = "b5dcc6f9-b51d-4d2f-80d4-75034c83cb51"
