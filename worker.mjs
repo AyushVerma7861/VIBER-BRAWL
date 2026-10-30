@@ -518,7 +518,7 @@ const IPFS_GATEWAYS = [
   'https://dweb.link/ipfs/',
   'https://gateway.lighthouse.storage/ipfs/'
 ];
-const GW_TIMEOUT = 7000;
+const GW_TIMEOUT = 28000;
 const AVATAR_TTL = 60 * 60 * 24 * 30;   /* a month; the art never changes */
 
 /* the wallet the gate already verified - not a new login */
@@ -680,6 +680,28 @@ async function handlePickAvatar(request, env) {
   return json({ ok: true, tokenId: id, avatar: '/api/avatar/' + id });
 }
 
+
+/* GET /api/admin/warm?from=1&to=25 - fills the cache ahead of time.
+   Cold IPFS fetches take 5-35s; nobody should wait for that. */
+async function handleWarm(request, env, url) {
+  const key = url.searchParams.get('key');
+  if (!key || key !== (env.WARM_KEY || 'warm-local')) return new Response('no', { status: 404 });
+
+  const from = Number(url.searchParams.get('from') || 1);
+  const to = Number(url.searchParams.get('to') || 10);
+  const out = { ok: true, done: [], failed: [] };
+
+  for (let id = from; id <= to; id++) {
+    const have = await env.CHOG_AVATARS.get('av:' + id);
+    if (have) { out.done.push(id); continue; }
+    try {
+      const r = await handleAvatar(new Request('https://x/api/avatar/' + id), env, String(id));
+      if (r.status === 200) out.done.push(id); else out.failed.push(id + ':' + r.status);
+    } catch (e) { out.failed.push(id + ':err'); }
+  }
+  return json(out, 200, { 'cache-control': 'no-store' });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -689,6 +711,7 @@ export default {
       if (path === '/api/gate/session' && request.method === 'POST') return await handleSession(request, env);
       if (path === '/api/player' && request.method === 'POST') return await handlePlayer(request, env);
       if (path === '/api/my-tokens') return await handleMyTokens(request, env);
+      if (path === '/api/admin/warm') return await handleWarm(request, env, url);
       if (path === '/api/player/avatar' && request.method === 'POST') return await handlePickAvatar(request, env);
       if (path.indexOf('/api/avatar/') === 0) return await handleAvatar(request, env, path.slice(12));
       if (path === '/api/leaderboard') return await handleBoard(request, env);
