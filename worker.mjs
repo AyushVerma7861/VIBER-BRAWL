@@ -506,11 +506,19 @@ async function handleRunFinish(request, env) {
 
 /* ------------------------------------------------------------------ avatars */
 
+/* Public gateways differ wildly in who they serve. Several throttle or block
+   datacenter IPs outright, which is why one that works from a laptop can fail
+   from a Worker. Try a spread, with a timeout, and keep whichever answers. */
 const IPFS_GATEWAYS = [
+  'https://nftstorage.link/ipfs/',
+  'https://w3s.link/ipfs/',
+  'https://gateway.lighthouse.storage/ipfs/',
+  'https://ipfs.filebase.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
   'https://dweb.link/ipfs/',
-  'https://ipfs.io/ipfs/'
+  'https://4everland.io/ipfs/'
 ];
+const GW_TIMEOUT = 7000;
 const AVATAR_TTL = 60 * 60 * 24 * 30;   /* a month; the art never changes */
 
 /* the wallet the gate already verified - not a new login */
@@ -558,59 +566,81 @@ async function handleMyTokens(request, env) {
   }
 }
 
+
+function ipfsPath(u) {
+  return String(u || '').replace(/^ipfs:\/\//, '').replace(/^\/+/, '');
+}
+
+async function gwFetch(path, asJson) {
+  for (const gw of IPFS_GATEWAYS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), GW_TIMEOUT);
+    try {
+      const r = await fetch(gw + path, {
+        signal: ctrl.signal,
+        headers: { accept: asJson ? 'application/json' : 'image/*, */*' }
+      });
+      clearTimeout(timer);
+      if (!r.ok) continue;
+      if (asJson) {
+        const j = await r.json();
+        if (j && j.image) return j;
+      } else {
+        const b = await r.arrayBuffer();
+        if (b.byteLength > 500) return b;
+      }
+    } catch (e) {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 /* GET /api/avatar/:id - cached art. First viewer pays the fetch, everyone
    after them gets it from KV in milliseconds. */
 async function handleAvatar(request, env, id) {
   if (!/^\d{1,6}$/.test(id)) return new Response('bad id', { status: 400 });
-  const key = 'av:' + id;
+  const imgKey = 'av:' + id;
+  const metaKey = 'meta:' + id;
 
-  const hit = await env.CHOG_AVATARS.get(key, 'arrayBuffer');
+  const hit = await env.CHOG_AVATARS.get(imgKey, 'arrayBuffer');
   if (hit) {
     return new Response(hit, {
       headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
     });
   }
 
-  let metaUrl = null;
-  try {
-    const uri = await rpc(env, env.CHOG_CONTRACTS, '0xc87b56dd' + id.toString(16).padStart(64, '0'));
-    const body = uri.slice(2);
-    const off = parseInt(body.slice(0, 64), 16) * 2;
-    const len = parseInt(body.slice(off, off + 64), 16);
-    const hex = body.slice(off + 64, off + 64 + len * 2);
-    let str = '';
-    for (let i = 0; i < hex.length; i += 2) str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
-    metaUrl = str;
-  } catch (e) {
-    return new Response('no metadata: ' + String(e && e.message || e), { status: 502 });
+  /* metadata first - cached separately so a second avatar from the same
+     collection does not pay for it again */
+  let meta = await env.CHOG_AVATARS.get(metaKey, 'json');
+
+  if (!meta) {
+    let uri = null;
+    try {
+      const raw = await rpc(env, env.CHOG_CONTRACTS, '0xc87b56dd' + id.toString(16).padStart(64, '0'));
+      const body = raw.slice(2);
+      const off = parseInt(body.slice(0, 64), 16) * 2;
+      const len = parseInt(body.slice(off, off + 64), 16);
+      const hex = body.slice(off + 64, off + 64 + len * 2);
+      uri = '';
+      for (let i = 0; i < hex.length; i += 2) uri += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    } catch (e) {
+      return new Response('token has no metadata: ' + String(e && e.message || e), { status: 422 });
+    }
+    if (!uri) return new Response('empty tokenURI', { status: 422 });
+
+    meta = await gwFetch(ipfsPath(uri), true);
+    if (!meta) return new Response('metadata unreachable from any gateway', { status: 504 });
+    await env.CHOG_AVATARS.put(metaKey, JSON.stringify(meta), { expirationTtl: 60 * 60 * 24 * 30 });
   }
 
-  const path = metaUrl.replace('ipfs://', '');
-  let imgUrl = null;
-  for (const gw of IPFS_GATEWAYS) {
-    try {
-      const r = await fetch(gw + path, { cf: { cacheTtl: 86400 } });
-      if (!r.ok) continue;
-      const m = await r.json();
-      if (m && m.image) { imgUrl = m.image; break; }
-    } catch (e) { /* try the next gateway */ }
-  }
-  if (!imgUrl) return new Response('metadata unreachable', { status: 504 });
+  const buf = await gwFetch(ipfsPath(meta.image), false);
+  if (!buf) return new Response('image unreachable from any gateway', { status: 504 });
 
-  const imgPath = imgUrl.replace('ipfs://', '');
-  for (const gw of IPFS_GATEWAYS) {
-    try {
-      const r = await fetch(gw + imgPath);
-      if (!r.ok) continue;
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength < 100) continue;
-      await env.CHOG_AVATARS.put(key, buf, { expirationTtl: AVATAR_TTL });
-      return new Response(buf, {
-        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
-      });
-    } catch (e) { /* next gateway */ }
-  }
-  return new Response('image unreachable', { status: 504 });
+  await env.CHOG_AVATARS.put(imgKey, buf, { expirationTtl: 60 * 60 * 24 * 30 });
+  return new Response(buf, {
+    headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=2592000, immutable' }
+  });
 }
 
 /* POST /api/player/avatar {tokenId} - claim a Chog as your face */
