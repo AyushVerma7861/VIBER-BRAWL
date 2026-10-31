@@ -218,7 +218,7 @@
     0%{ transform:translateY(30px) scale(.94) rotate(-1.2deg); opacity:0 }
     62%{ transform:translateY(-5px) scale(1.012) rotate(.3deg); opacity:1 }
     100%{ transform:none; opacity:1 } }
-  .rcPaper{ position:relative; width:min(330px,86vw); background:#F4F1E8; color:#1A1A16;
+  .rcPaper{ position:relative; width:min(368px,92vw,58vh); background:#F4F1E8; color:#1A1A16;
     border-radius:3px 3px 0 0; padding:20px 18px 16px;
     font-family:'JetBrains Mono',monospace;
     box-shadow:0 30px 70px rgba(0,0,0,.66);
@@ -230,6 +230,15 @@
   .rcRow{ display:flex; justify-content:space-between; align-items:baseline;
     font-size:10px; letter-spacing:.05em; padding:4px 0; border-top:1px dashed #D3CDBC; }
   .rcRow.first{ border-top:1px dashed #B9B3A3; }
+  .rcHero{ text-align:center; padding:4px 0 8px; }
+  .rcHero span{ display:block; font-size:8px; letter-spacing:.32em; color:#8A8577; margin-bottom:2px; }
+  .rcHero b{ display:block; font-size:33px; line-height:1; letter-spacing:-.05em; color:#1A1A16; }
+  .rcId{ display:flex; align-items:center; justify-content:center; gap:9px; padding:0 0 9px; }
+  .rcId img{ width:33px; height:33px; border-radius:8px; object-fit:cover; display:none;
+    box-shadow:0 0 0 1px rgba(26,26,22,.16); }
+  .rcId img.on{ display:block; }
+  .rcId b{ display:block; font-size:13px; letter-spacing:.02em; line-height:1.1; }
+  .rcId i{ display:block; font-style:normal; font-size:8.5px; letter-spacing:.1em; color:#8A8577; margin-top:2px; }
   .rcRow span:last-child{ font-weight:700; }
   .rcStamp{ margin:13px 0 9px; text-align:center; font-size:9px; letter-spacing:.16em; color:#6B675C; }
   .rcStamp.fail{ color:#A32D2D; }
@@ -296,6 +305,8 @@
     <div class="rcPaper">
       <div class="rcHead">CHOG MART</div>
       <div class="rcSub" id="rcSub">UNIT 07 &middot; AISLE 7</div>
+      <div class="rcHero"><span>TIME</span><b id="rcTime">0:00.0</b></div>
+      <div class="rcId"><img id="rcAv" alt=""><div><b id="rcName">GUEST</b><i id="rcRank">UNRANKED</i></div></div>
       <div id="rcRows"></div>
       <div class="rcStamp" id="rcStamp">THANK YOU FOR SHOPPING</div>
       <canvas id="rcBar" width="294" height="30" style="display:block;margin:0 auto"></canvas>
@@ -2289,6 +2300,10 @@ function endFight(win){
    The run, printed. The same numbers are drawn twice: into the DOM receipt
    the player reads, and onto a 1080x1350 canvas they can post.
    ---------------------------------------------------------------------- */
+function ctFmt(t){
+  var m=Math.floor(t/60), sec=Math.floor(t%60), d=Math.floor((t%1)*10);
+  return m+':'+String(sec).padStart(2,'0')+'.'+d;
+}
 function receiptData(win){
   const time = Math.max(0.1, G.t);
   const max  = P.max || 185;
@@ -2299,12 +2314,18 @@ function receiptData(win){
   const lost = Math.min(CANS, Math.max(0, Math.ceil((max - hp) / per - 1e-6)));
   const phase = Math.min(3, boss ? (boss.phase|0)+1 : 1);
   const no = String(1000 + ((Math.round(time*10)*37 + lost*91 + phase*17) % 9000));
-  return { win:!!win, time:time, lost:lost, cans:CANS, max:max, phase:phase, no:no };
+  /* who ran it - the card is worthless if nobody can tell whose run it is */
+  let who=null, av=null;
+  try{
+    const a = window.Acct && window.Acct.get && window.Acct.get();
+    if(a){ who = a.name || null; av = a.avatarId || null; }
+  }catch(e){}
+  return { win:!!win, time:time, lost:lost, cans:CANS, max:max, phase:phase, no:no,
+           name:who, avatarId:av, rank:window.__lastRank || null };
 }
 function receiptRows(d){
   const rows = [
     ['RESULT', d.win ? 'CLEARED' : 'FAILED'],
-    ['TIME', d.time.toFixed(1) + 's'],
     ['CANS LOST', d.lost + ' of ' + d.cans],
     ['PHASE', d.phase + ' of 3'],
     ['RECEIPT', '#' + d.no]
@@ -2325,50 +2346,174 @@ function rcBarcode(cv, seed){
     x += bw + 1 + Math.floor(next()*2);
   }
 }
-function receiptCanvas(d){
-  const W=1080, H=1350, cv=document.createElement('canvas');
-  cv.width=W; cv.height=H;
-  const g=cv.getContext('2d');
-  const bg=g.createRadialGradient(W/2,H*0.3,80,W/2,H*0.3,W*0.9);
-  bg.addColorStop(0,'#151024'); bg.addColorStop(1,'#08060E');
-  g.fillStyle=bg; g.fillRect(0,0,W,H);
-  const px=120, py=130, pw=W-px*2, ph=H-py-160;
-  g.fillStyle='#F4F1E8'; g.fillRect(px,py,pw,ph);
-  g.fillStyle='#6B675C';
-  for(let i=0;i<10;i++){ g.fillRect(px+i*14, py+ph, 14-i*0.6, 10); }
-  g.textAlign='center'; g.fillStyle='#1A1A16';
-  g.font='700 34px "JetBrains Mono", monospace';
-  g.fillText('CHOG MART', W/2, py+70);
-  g.fillStyle='#6B675C'; g.font='400 20px "JetBrains Mono", monospace';
-  g.fillText('UNIT 07 · AISLE 7', W/2, py+104);
-  const rows=[
-    ['RESULT', d.win?'CLEARED':'FAILED'],
-    ['TIME', d.time.toFixed(1)+'s'],
-    ['CANS LOST', d.lost+' of '+d.cans],
-    ['PHASE', d.phase+' of 3'],
-    ['RECEIPT', '#'+d.no]
+function ctBarcode(cv, seed) {
+  var g = cv.getContext('2d');
+  var x = 0, n = seed || 7;
+  g.fillStyle = '#1A1A16';
+  while (x < cv.width) {
+    n = (n * 1103515245 + 12345) & 0x7fffffff;
+    var w = 1 + (n % 5);
+    var gap = 2 + ((n >> 5) % 5);
+    if ((n >> 9) % 3) g.fillRect(x, 0, w, cv.height);
+    x += w + gap;
+  }
+}
+
+function ctRound(g, x, y, w, h, r) {
+  g.beginPath();
+  if (g.roundRect) { g.roundRect(x, y, w, h, r); return; }
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function receiptCanvas(d) {
+  if(!d.avatarImg && d.avatarId && window.__rcAvatarImg) d.avatarImg = window.__rcAvatarImg;
+  var W = 1080, H = 1350;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var g = cv.getContext('2d');
+
+  /* backdrop */
+  var bg = g.createRadialGradient(W / 2, H * 0.22, 60, W / 2, H * 0.22, W * 1.05);
+  bg.addColorStop(0, '#1A1230');
+  bg.addColorStop(1, '#07050E');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+  var glow = g.createRadialGradient(W / 2, 320, 40, W / 2, 320, 640);
+  glow.addColorStop(0, d.win ? 'rgba(223,249,2,0.09)' : 'rgba(255,90,95,0.10)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+
+  var px = 84, pw = W - px * 2, ph = 1082;
+  var py = Math.round((H - ph) / 2);
+  var ix = px + 58, iw = pw - 116;
+  var mid = px + pw / 2;
+
+  /* paper */
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.66)';
+  g.shadowBlur = 74; g.shadowOffsetY = 28;
+  g.fillStyle = '#F4F1E8';
+  g.fillRect(px, py, pw, ph);
+  g.restore();
+
+  /* torn edge — full width */
+  var teeth = 18, tw = pw / teeth;
+  g.fillStyle = '#F4F1E8';
+  for (var i = 0; i < teeth; i++) {
+    g.beginPath();
+    g.moveTo(px + i * tw, py + ph);
+    g.lineTo(px + i * tw + tw / 2, py + ph + (i % 2 ? 8 : 15));
+    g.lineTo(px + (i + 1) * tw, py + ph);
+    g.closePath(); g.fill();
+  }
+
+  var rule = function (y, dash) {
+    g.strokeStyle = '#CFC8B6'; g.lineWidth = 2;
+    g.setLineDash(dash || [8, 7]);
+    g.beginPath(); g.moveTo(ix, y); g.lineTo(ix + iw, y); g.stroke();
+    g.setLineDash([]);
+  };
+
+  /* header */
+  g.textAlign = 'center';
+  g.fillStyle = '#1A1A16';
+  g.font = '700 46px "JetBrains Mono", monospace';
+  g.fillText('CHOG MART', mid, py + 92);
+  g.fillStyle = '#6B675C';
+  g.font = '400 19px "JetBrains Mono", monospace';
+  g.fillText('UNIT 07 · AISLE 7 · MONAD', mid, py + 126);
+
+  rule(py + 158);
+
+  /* hero time */
+  g.fillStyle = '#8A8577';
+  g.font = '700 17px "JetBrains Mono", monospace';
+  g.fillText('TIME', mid, py + 200);
+
+  g.fillStyle = '#1A1A16';
+  g.font = '800 138px "JetBrains Mono", monospace';
+  g.fillText(ctFmt(d.time), mid, py + 330);
+
+  /* result chip */
+  var chipW = 240, chipH = 48, chipY = py + 358;
+  g.fillStyle = d.win ? '#DFF902' : '#A32D2D';
+  ctRound(g, mid - chipW / 2, chipY, chipW, chipH, 24); g.fill();
+  g.fillStyle = d.win ? '#0C0F08' : '#F4F1E8';
+  g.font = '700 20px "JetBrains Mono", monospace';
+  g.fillText(d.win ? 'CLEARED' : 'FAILED', mid, chipY + 32);
+
+  /* identity */
+  var name = d.name || 'GUEST';
+  var idY = chipY + 112;
+  g.font = '700 34px "JetBrains Mono", monospace';
+  var nw = g.measureText(name).width;
+  var av = 84, gap = 22;
+  var totalW = (d.avatarImg ? av + gap : 0) + nw;
+  var left = mid - totalW / 2;
+
+  if (d.avatarImg) {
+    g.save();
+    ctRound(g, left, idY - 58, av, av, 14); g.clip();
+    g.drawImage(d.avatarImg, left, idY - 58, av, av);
+    g.restore();
+    g.strokeStyle = 'rgba(26,26,22,0.16)'; g.lineWidth = 2;
+    ctRound(g, left, idY - 58, av, av, 14); g.stroke();
+  }
+  g.textAlign = 'left';
+  g.fillStyle = '#1A1A16';
+  g.font = '700 34px "JetBrains Mono", monospace';
+  g.fillText(name, left + (d.avatarImg ? av + gap : 0), idY - 12);
+  g.fillStyle = '#8A8577';
+  g.font = '400 18px "JetBrains Mono", monospace';
+  g.fillText(d.rank || 'UNRANKED', left + (d.avatarImg ? av + gap : 0), idY + 18);
+  g.textAlign = 'center';
+
+  /* rows */
+  var rows = [
+    ['CANS LOST', d.lost + ' of ' + d.cans],
+    ['PHASE', d.phase + ' of 3'],
+    ['RECEIPT', '#' + d.no]
   ];
-  let y=py+170;
-  rows.forEach(function(r,i){
-    g.strokeStyle='#C9C3B2'; g.setLineDash([7,6]); g.beginPath();
-    g.moveTo(px+34,y-30); g.lineTo(px+pw-34,y-30); g.stroke(); g.setLineDash([]);
-    g.textAlign='left'; g.fillStyle='#4A473E'; g.font='400 22px "JetBrains Mono", monospace';
-    g.fillText(r[0], px+38, y);
-    g.textAlign='right'; g.fillStyle='#1A1A16'; g.font='700 26px "JetBrains Mono", monospace';
-    g.fillText(r[1], px+pw-38, y);
-    y+=58;
+  var ry = idY + 96;
+  rows.forEach(function (r) {
+    rule(ry - 34);
+    g.textAlign = 'left';
+    g.fillStyle = '#6B675C';
+    g.font = '400 21px "JetBrains Mono", monospace';
+    g.fillText(r[0], ix, ry);
+    g.textAlign = 'right';
+    g.fillStyle = '#1A1A16';
+    g.font = '700 25px "JetBrains Mono", monospace';
+    g.fillText(r[1], ix + iw, ry);
+    g.textAlign = 'center';
+    ry += 68;
   });
-  g.strokeStyle='#C9C3B2'; g.setLineDash([7,6]); g.beginPath();
-  g.moveTo(px+34,y-30); g.lineTo(px+pw-34,y-30); g.stroke(); g.setLineDash([]);
-  g.textAlign='center';
+  rule(ry - 34);
+
+  /* stamp */
   g.fillStyle = d.win ? '#6B675C' : '#A32D2D';
-  g.font='700 20px "JetBrains Mono", monospace';
-  g.fillText(d.win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS', W/2, y+46);
-  const bar=document.createElement('canvas'); bar.width=560; bar.height=70;
-  rcBarcode(bar, parseInt(d.no,10));
-  g.drawImage(bar, W/2-280, y+80);
-  g.fillStyle='#3A3730'; g.font='400 16px "JetBrains Mono", monospace';
-  g.fillText('CHOG TRIALS · VIBER BRAWL', W/2, py+ph-26);
+  g.font = '700 18px "JetBrains Mono", monospace';
+  g.fillText(d.win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS', mid, ry + 40);
+
+  /* barcode */
+  var bar = document.createElement('canvas');
+  bar.width = 640; bar.height = 92;
+  ctBarcode(bar, parseInt(d.no, 10));
+  g.drawImage(bar, mid - 320, ry + 74);
+
+  /* footer */
+  g.fillStyle = '#5E5A4E';
+  g.font = '700 16px "JetBrains Mono", monospace';
+  g.fillText('CHOG TRIALS · VIBER BRAWL', mid, py + ph - 58);
+  g.fillStyle = '#8A8577';
+  g.font = '400 15px "JetBrains Mono", monospace';
+  g.fillText('viber-brawl.viberbrawl.workers.dev', mid, py + ph - 32);
+
   return cv;
 }
 function receiptText(d){
@@ -2412,6 +2557,21 @@ function showReceipt(win){
   stamp.classList.toggle('fail', !win);
   document.getElementById('rcSub').textContent = win ? 'UNIT 07 · AISLE 7' : 'UNIT 07 · AISLE 7 · TRANSACTION VOID';
   rcBarcode(document.getElementById('rcBar'), parseInt(d.no,10));
+  document.getElementById('rcTime').textContent = ctFmt(d.time);
+  document.getElementById('rcName').textContent = d.name || 'GUEST';
+  document.getElementById('rcRank').textContent = d.rank ? ('#' + d.rank + ' ON THE BOARD') : 'UNRANKED';
+  const avEl = document.getElementById('rcAv');
+  if(d.avatarId){
+    avEl.src = '/avatars/' + d.avatarId + '.webp'; avEl.classList.add('on');
+    /* same image feeds the share card, which is drawn on a canvas */
+    const im = new Image(); im.onload = function(){ window.__rcAvatarImg = im; };
+    im.src = '/avatars/' + d.avatarId + '.webp';
+  }
+  else { avEl.classList.remove('on'); avEl.removeAttribute('src'); }
+  /* replay the paper drop - the element exists from page load, so the
+     animation had long since finished by the time it was ever shown */
+  const paper = document.querySelector('.rcPaper');
+  if(paper){ paper.style.animation='none'; void paper.offsetWidth; paper.style.animation=''; }
   document.getElementById('receiptWrap').classList.add('on');
   document.getElementById('scrEnd').classList.remove('on');
   document.getElementById('hud').classList.remove('on');
@@ -2430,6 +2590,11 @@ document.getElementById('btnAgain').addEventListener('click', function(){
 
 /* the card itself, once the outro has finished playing */
 function showResults(win){
+  /* Submit the run HERE, not from the DOM poll. The poll only fires while
+     #scrEnd is on, and showReceipt() removes that class - so a clear used to
+     be submitted only if the player happened to press CLOSE. Winning should
+     put you on the board. */
+  if(win && window.__finishRun) window.__finishRun();
   G.over=true; G.mode='end';
   CAM_OVERRIDE=null;
   document.getElementById('hud').classList.remove('on');
@@ -4493,7 +4658,7 @@ document.getElementById('btnHowPause').addEventListener('click',()=>openHow('pau
    override the rest of the game uses, so nothing here is a video file.
    ---------------------------------------------------------------------- */
 const CINE={ t:0, kind:null, base:null };
-const INTRO_LEN=5.9, WIN_LEN=9.6, LOSE_LEN=7.0;
+const INTRO_LEN=5.9, WIN_LEN=5.2, LOSE_LEN=6.2;
 
 function fadeTo(v,ms){
   const e=document.getElementById('fade');
@@ -4558,7 +4723,8 @@ function endCine(){
     fadeTo(0,600);
   } else {
     fadeTo(1,420);
-    setTimeout(()=>{ fadeTo(0,10); showResults(kind==='win'); }, 440);
+    /* fade back IN over the receipt instead of snapping to it */
+    setTimeout(()=>{ showResults(kind==='win'); fadeTo(0,340); }, 440);
   }
 }
 
@@ -4642,14 +4808,19 @@ function updateCine(dt){
       p0.mesh.rotation.z=wob;
       p0.mesh.rotation.x=-Math.PI*0.5*(1-clamp(age/0.55,0,1))*0.0;
     }
-    /* the camera turns from the dead cabinet to the can on the floor */
-    const look=ss(3.4,5.2,t);
-    if(CINE.payout && look>0){
+    /* CUT to a low hero angle on the can.
+       The old move lerped the camera 55% of the way to the can and dropped it
+       to 1.55m, which walked it UNDER the cabinet - for about a second and a
+       half the frame was the underside of a vending machine hanging over the
+       player. A cut has none of that problem: the can in the foreground, the
+       dead machine behind it, and the camera never enters the machine. */
+    if(CINE.payout && t>=3.3){
       const p0=CINE.payout.mesh.position;
-      const cx=bx+Math.sin(a)*16.5, cz=bz+Math.cos(a)*16.5;
+      const fx=Math.sin(b.heading), fz=Math.cos(b.heading);
+      const rx=Math.cos(b.heading), rz=-Math.sin(b.heading);
       CAM_OVERRIDE={
-        p:new THREE.Vector3(cx+(p0.x-cx)*0.55*look, (6.2+2.4*k)*(1-look)+1.55*look, cz+(p0.z-cz)*0.55*look),
-        l:new THREE.Vector3(bx+(p0.x-bx)*look, (2.8-0.9*k)*(1-look)+0.55*look, bz+(p0.z-bz)*look)
+        p:new THREE.Vector3(p0.x+fx*5.0+rx*2.4, 1.62, p0.z+fz*5.0+rz*2.4),
+        l:new THREE.Vector3(p0.x, 0.52, p0.z)
       };
     }
     if(t>2.2&&t<2.25) toast('THANK YOU', 1800);
@@ -4997,20 +5168,25 @@ requestAnimationFrame(loop);
     }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (o) {
       var d = o.d;
       if (d && d.ok) {
+        window.__lastRank = d.rank || null;
         var el = document.getElementById('endSub');
         if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
-      } else if (d && d.reason === 'no_longer_holder') {
-        say('That Chog left this wallet during the run — time not recorded');
       }
+      /* No branch for a finish-time refusal: there is no ownership check at
+         finish. If you held the Chog when the run started, the run counts. */
     }).catch(function () {});
   }
+
+  /* showResults() lives in the game script, this closure does not share its
+     scope - hand it a door. */
+  window.__finishRun = finishRun;
 
   var startBtn = document.getElementById('btnStart');
   if (startBtn) startBtn.addEventListener('click', startRun);
 
+  /* fallback only - showResults() submits directly. Kept for the case where
+     the end screen is reached some other way. */
   setInterval(function () {
-    var scr = document.getElementById('scrEnd');
-    if (!scr || !scr.classList.contains('on')) return;
     var kicker = (document.getElementById('endKicker') || {}).textContent || '';
     if (kicker.indexOf('CLEARED') !== -1) finishRun();
   }, 500);
