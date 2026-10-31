@@ -1992,7 +1992,7 @@ function startFight(){
   P.attackType=null; P.attackT=0; P.attackPhase='';
   P.flash=0; P.landSquash=0;
 
-  G.over=false; G.t=0; G.shake=0; G.hitstop=0;
+  G.over=false; G.t=0; G.finalT=0; G.shake=0; G.hitstop=0;
   paused=false; PAUSED=false;
   document.getElementById('scrPause').classList.remove('on');
   /* open the fight already looking down the line at the machine */
@@ -2289,6 +2289,12 @@ function updateStock(dt){
 
 function endFight(win){
   if(CINE.kind) return;
+  /* Stop the clock HERE. G.t keeps ticking through the win cinematic (5.2s),
+     so the old receipt reported fight + outro, and the submitted time was
+     wall-clock since the button - intro, loading and outro included. Three
+     different numbers for one run. This one is the fight, and it is what the
+     receipt shows and what the board ranks. */
+  G.finalT = Math.max(0.1, Math.round(G.t * 10) / 10);   /* quantised to tenths so the receipt and the stored ms are the same number */
   paused=false; PAUSED=false;
   document.getElementById('scrPause').classList.remove('on');
   document.getElementById('hud').classList.remove('on');
@@ -2305,7 +2311,7 @@ function ctFmt(t){
   return m+':'+String(sec).padStart(2,'0')+'.'+d;
 }
 function receiptData(win){
-  const time = Math.max(0.1, G.t);
+  const time = G.finalT || Math.max(0.1, G.t);
   const max  = P.max || 185;
   /* health is measured in cans on the shelf: six of them, each worth max/6 */
   const CANS = 6;
@@ -2594,6 +2600,7 @@ function showResults(win){
      #scrEnd is on, and showReceipt() removes that class - so a clear used to
      be submitted only if the player happened to press CLOSE. Winning should
      put you on the board. */
+  window.__runMs = Math.round((G.finalT || G.t) * 1000);
   if(win && window.__finishRun) window.__finishRun();
   G.over=true; G.mode='end';
   CAM_OVERRIDE=null;
@@ -4716,7 +4723,7 @@ function endCine(){
       b.idleT=0.9;
     }
     CAM_OVERRIDE=null;
-    G.mode='fight'; G.t=0;
+    G.mode='fight'; G.t=0; G.finalT=0;
     document.getElementById('hud').classList.add('on');
     updateHUD();
     toast('THE MACHINE', 1500);
@@ -5160,7 +5167,12 @@ requestAnimationFrame(loop);
   function finishRun() {
     if (runSent || !runTicket) return;
     runSent = true;
-    var ms = Date.now() - runStart;
+    /* the fight clock, not wall time: wall time included the 5.9s intro and
+       the 5.2s outro, and raced the server's ticket stamp (elapsed < ms ->
+       rejected as 'impossible', which is how a run could vanish) */
+    var ms = (window.__runMs && window.__runMs > 0)
+      ? window.__runMs
+      : (Date.now() - runStart);
     fetch('/api/run/finish', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },

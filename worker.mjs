@@ -478,7 +478,12 @@ async function handlePlayer(request, env) {
    caller always sees where they stand even when they are nowhere near it. */
 async function handleBoard(request, env) {
   const { results } = await env.DB.prepare(
-    'SELECT COALESCE(p.name, r.name) AS name, r.ms, p.token_id FROM runs r LEFT JOIN players p ON p.id = r.player_id '
+    /* one row per player - their BEST run. Listing every run let one person
+       take all five slots. */
+    'SELECT COALESCE(p.name, r.name) AS name, r.ms, p.token_id FROM runs r '
+    + 'LEFT JOIN players p ON p.id = r.player_id '
+    + 'WHERE r.ms = (SELECT MIN(r2.ms) FROM runs r2 WHERE r2.player_id = r.player_id) '
+    + 'GROUP BY r.player_id '
     + 'ORDER BY r.ms ASC, r.created_at ASC LIMIT 5'
   ).all();
 
@@ -489,8 +494,11 @@ async function handleBoard(request, env) {
       'SELECT MIN(ms) AS ms FROM runs WHERE player_id = ?'
     ).bind(p.w).first();
     if (best && best.ms) {
-      const above = await env.DB.prepare('SELECT COUNT(*) AS c FROM runs WHERE ms < ?')
-        .bind(best.ms).first();
+      /* rank by PLAYERS, not runs: three runs from one person must not push
+         everyone else down three places */
+      const above = await env.DB.prepare(
+        'SELECT COUNT(*) AS c FROM (SELECT player_id, MIN(ms) AS b FROM runs GROUP BY player_id) WHERE b < ?'
+      ).bind(best.ms).first();
       const me = await env.DB.prepare('SELECT token_id FROM players WHERE id = ?').bind(p.w).first();
       you = { rank: (above ? above.c : 0) + 1, ms: best.ms, token_id: me ? me.token_id : null };
     }
