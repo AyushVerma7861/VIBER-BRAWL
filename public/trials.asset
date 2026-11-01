@@ -4879,9 +4879,6 @@ function updateCine(dt){
   }
 }
 
-function skipCine(){
-  if(CINE.kind==='intro'){ CINE.t=INTRO_LEN; }
-}
 
 /* -------------------------------- boot --------------------------------- */
 console.log('%cCHOG TRIALS · BUILD 25.10.25 · cinematics v2 + receipt','color:#DFF902;background:#0B1220;padding:4px 8px;font-weight:700');
@@ -4928,7 +4925,15 @@ document.getElementById('btnAgain').addEventListener('click',()=>{
 });
 
 /* debug hooks for headless verification */
+/* Debug hooks exist only on a dev machine. On the live site every one of
+   these was callable from the console - __god, __setHp and __hitFrom in
+   particular turn a ranked run into a two-second clear. */
+const DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+if (DEV) {
 window.__receipt=(w)=>showResults(!!w);
+function skipCine(){
+  if(CINE.kind==='intro'){ CINE.t=INTRO_LEN; }
+}
 window.__cineAt=(t)=>{ CINE.t=t; };
 window.__cine=(k)=>startCine(k);
 window.__cineInfo=()=>({kind:CINE.kind,t:+CINE.t.toFixed(2),mode:G.mode,can:!!CINE.payout,shelf:!!CINE.shelf});
@@ -4999,6 +5004,7 @@ window.__forceAction=(a)=>{
   boss.phaseState='windup'; boss.stateT=0;
   boss.wave1=false; boss.wave2=false;
 };
+}
 
 resize();
 
@@ -5139,7 +5145,7 @@ requestAnimationFrame(loop);
   /* ---------------------------------------------------------------- runs
      The server owns the clock. It issues a ticket when the run starts and
      refuses any time it could not have taken, so nothing here is trusted. */
-  var runTicket = null, runStart = 0, runSent = false;
+  var runTicket = null, runStart = 0, runSent = false, runPromise = null;
 
   /* the game's own toast element, so a refusal reads like part of the game */
   function say(msg) {
@@ -5152,7 +5158,9 @@ requestAnimationFrame(loop);
 
   function startRun() {
     runTicket = null; runSent = false; runStart = Date.now();
-    fetch('/api/run/start', { method: 'POST', credentials: 'same-origin' })
+    /* keep the promise: if the boss dies before the ticket arrives, finishRun
+       waits for it instead of abandoning the run */
+    runPromise = fetch('/api/run/start', { method: 'POST', credentials: 'same-origin' })
       .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
       .then(function (o) {
         if (o.d && o.d.ok) { runTicket = o.d.ticket; return; }
@@ -5164,29 +5172,48 @@ requestAnimationFrame(loop);
       .catch(function () {});
   }
 
+  /* Every refusal says why. A run that vanishes without a word is worse than
+     a run that fails loudly - that silence is what cost us an evening. */
+  function refuseReason(d) {
+    var r = (d && d.reason) || '';
+    if (r === 'impossible') return 'That run could not be verified — not recorded';
+    if (r === 'too_fast') return 'That time was too fast to be real';
+    if (r === 'ticket_expired') return 'This run expired before it was sent';
+    if (r === 'ticket_used') return 'This run was already submitted';
+    if (r === 'bad_ticket') return 'This run was not recognised — not recorded';
+    if (r === 'no_player') return 'Sign in with a wallet to record this run';
+    return 'This run was not recorded' + (r ? ' (' + r + ')' : '');
+  }
+
   function finishRun() {
-    if (runSent || !runTicket) return;
+    if (runSent) return;
     runSent = true;
-    /* the fight clock, not wall time: wall time included the 5.9s intro and
-       the 5.2s outro, and raced the server's ticket stamp (elapsed < ms ->
-       rejected as 'impossible', which is how a run could vanish) */
     var ms = (window.__runMs && window.__runMs > 0)
       ? window.__runMs
       : (Date.now() - runStart);
-    fetch('/api/run/finish', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticket: runTicket, ms: ms })
-    }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (o) {
-      var d = o.d;
-      if (d && d.ok) {
-        window.__lastRank = d.rank || null;
-        var el = document.getElementById('endSub');
-        if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
-      }
-      /* No branch for a finish-time refusal: there is no ownership check at
-         finish. If you held the Chog when the run started, the run counts. */
-    }).catch(function () {});
+
+    /* wait for a ticket that is still in flight - a slow start must not
+       silently bin an otherwise good run */
+    Promise.resolve(runPromise).then(function () {
+      if (!runTicket) { say('Could not get a run ticket — this run was not recorded'); return; }
+      return fetch('/api/run/finish', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket: runTicket, ms: ms })
+      }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+        .then(function (o) {
+          var d = o.d;
+          if (d && d.ok) {
+            window.__lastRank = d.rank || null;
+            var el = document.getElementById('endSub');
+            if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
+            return;
+          }
+          say(refuseReason(d));
+        });
+    }).catch(function () {
+      say('Could not reach the server — this run was not recorded');
+    });
   }
 
   /* showResults() lives in the game script, this closure does not share its
