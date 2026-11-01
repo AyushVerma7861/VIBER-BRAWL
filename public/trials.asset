@@ -4705,6 +4705,13 @@ function startCine(kind){
   G.mode=kind;
 }
 
+/* skipping the intro: called from the key and pointer handlers, so this
+   must live at top level - it was briefly defined inside the DEV
+   block, which made every keypress throw on production. */
+function skipCine(){
+  if(CINE.kind==='intro'){ CINE.t=INTRO_LEN; }
+}
+
 function endCine(){
   const kind=CINE.kind;
   CINE.kind=null;
@@ -4931,9 +4938,6 @@ document.getElementById('btnAgain').addEventListener('click',()=>{
 const DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 if (DEV) {
 window.__receipt=(w)=>showResults(!!w);
-function skipCine(){
-  if(CINE.kind==='intro'){ CINE.t=INTRO_LEN; }
-}
 window.__cineAt=(t)=>{ CINE.t=t; };
 window.__cine=(k)=>startCine(k);
 window.__cineInfo=()=>({kind:CINE.kind,t:+CINE.t.toFixed(2),mode:G.mode,can:!!CINE.payout,shelf:!!CINE.shelf});
