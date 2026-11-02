@@ -2523,9 +2523,10 @@ function receiptCanvas(d) {
   return cv;
 }
 function receiptText(d){
+  const cans = d.lost + (d.lost === 1 ? ' can' : ' cans');
   return d.win
-    ? 'Cleared CHOG MART · UNIT 07 in ' + d.time.toFixed(1) + 's. ' + d.lost + ' cans lost.'
-    : 'The machine kept my stock. ' + d.time.toFixed(1) + 's, phase ' + d.phase + '.';
+    ? 'Cleared CHOG MART in ' + d.time.toFixed(1) + 's — ' + cans + ' lost.\n\nviber-brawl.viberbrawl.workers.dev'
+    : 'The machine kept my stock — ' + d.time.toFixed(1) + 's, phase ' + d.phase + '.\n\nviber-brawl.viberbrawl.workers.dev';
 }
 function receiptBlob(d){
   return new Promise(function(res){ receiptCanvas(d).toBlob(res, 'image/png'); });
@@ -2535,12 +2536,28 @@ async function shareReceipt(){
   const blob = await receiptBlob(d);
   const file = new File([blob], 'chog-mart-receipt.png', { type:'image/png' });
   const text = receiptText(d);
+
+  /* Phones: the OS share sheet. X is in the list and the image goes with it. */
   if(navigator.canShare && navigator.canShare({ files:[file] })){
     try{ await navigator.share({ files:[file], text:text }); return; }catch(e){ /* user cancelled */ }
   }
-  saveReceiptBlob(blob);
-  try{ await navigator.clipboard.writeText(text); toast('SAVED · CAPTION COPIED', 2000); }
-  catch(e){ toast('SAVED', 1600); }
+
+  /* Desktop: X's composer takes text from a link but never an image, so the
+     receipt goes to the clipboard and the composer opens ready to paste.
+     The tab has to be opened BEFORE any further await - a popup needs the
+     click's activation, and the clipboard call consumes it. */
+  const xwin = window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text), '_blank');
+
+  let onClipboard = false;
+  try{
+    if(typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write){
+      await navigator.clipboard.write([ new ClipboardItem({ 'image/png': blob }) ]);
+      onClipboard = true;
+    }
+  }catch(e){ /* permission denied - fall back to a download */ }
+
+  if(onClipboard) toast('X OPENED · PASTE THE RECEIPT', 2800);
+  else { saveReceiptBlob(blob); toast('X OPENED · RECEIPT SAVED', 2800); }
 }
 function saveReceiptBlob(blob){
   const a=document.createElement('a');
@@ -4069,6 +4086,7 @@ function loop(now){
   requestAnimationFrame(loop);
   let raw=(now-last)/1000; last=now;
   if(raw>0.1) raw=0.1;
+  if(window.TrialsPolish) window.TrialsPolish.tick(raw);
 
   /* while the tutorial is up it draws its own stage on its own renderer */
   if(document.getElementById('scrHow').classList.contains('on')){
@@ -5135,6 +5153,9 @@ function touchUI(){
 
 requestAnimationFrame(loop);
 </script>
+<script src="receipt-theme.js"></script>
+<script src="midnight-mart.js"></script>
+<script src="trials-polish.js"></script>
 <script src="acct.js"></script>
 <script src="picker.js"></script>
 <script src="lb.js"></script>
