@@ -40,9 +40,22 @@
   let elapsed=0, audio=null, muted=false;
   try{muted=localStorage.getItem('chog-polish-muted')==='1';}catch{}
   const button=document.createElement('button');
-  button.type='button'; button.style.cssText='position:fixed;right:16px;bottom:16px;z-index:90;background:#140e23;color:#f2eaff;border:1px solid #70518e;border-radius:8px;padding:10px 14px;font:12px system-ui;cursor:pointer;min-height:44px';
+  button.type='button'; button.id='chogMute';
+  button.style.cssText='position:fixed;right:16px;bottom:16px;z-index:90;background:#140e23;color:#f2eaff;border:1px solid #70518e;border-radius:8px;padding:10px 14px;font:12px system-ui;cursor:pointer;min-height:44px';
   button.setAttribute('aria-label','Mute game audio');
-  function label(){button.textContent=muted?'Sound: off':'Sound: on';button.setAttribute('aria-pressed',String(muted));}
+  /* On touch the bottom-right belongs to HIT / HEAVY / JUMP / DASH / MOUNT -
+     a 84x44 label there sits on top of the attack button. Move it under the
+     pause control instead, where nothing else lives. */
+  const muteStyle=document.createElement('style');
+  muteStyle.textContent='body.touch #chogMute{right:max(12px,env(safe-area-inset-right));bottom:auto;'
+    +'top:calc(max(12px,env(safe-area-inset-top)) + 50px);width:42px;height:42px;padding:0;'
+    +"min-height:0;border-radius:11px;font:700 9.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em}";
+  document.head.append(muteStyle);
+  function label(){
+    const short=document.body.classList.contains('touch');
+    button.textContent = short ? (muted?'OFF':'ON') : (muted?'Sound: off':'Sound: on');
+    button.setAttribute('aria-pressed',String(muted));
+  }
   button.addEventListener('click',()=>{muted=!muted; SFX.enabled=!muted; if(!muted){SFX.init();SFX.resume();} try{localStorage.setItem('chog-polish-muted',muted?'1':'0');}catch{} label();});
   label(); document.body.append(button); SFX.enabled=!muted;
   function initAudio(){
@@ -131,7 +144,9 @@
     h.glow.opacity=b.dead?.06:([0,.2,.42,.7][phase]);
     h.core.visible=phase>1;
   }
+  let relabelled=false;
   function tick(dt){
+    if(!relabelled && document.body.classList.contains('touch')){ relabelled=true; label(); }
     const tutorial=document.getElementById('scrHow').classList.contains('on');
     const frozen=PAUSED||G.rotLocked||document.hidden||tutorial;
     updateHaunting(boss,dt,frozen);
