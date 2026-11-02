@@ -173,7 +173,9 @@
       audio.hum.gain.setTargetAtTime(level,c.currentTime,.10);
       SFX.master.gain.setTargetAtTime(active?.7:0,c.currentTime,.025);
     }
-    button.style.display=G.mode==='fight'&&!PAUSED?'none':'';
+    /* hide during the fight, and on HOW TO PLAY - there the tutorial art fills
+       the screen and a floating button sits on top of the thing being taught */
+    button.style.display=(G.mode==='fight'&&!PAUSED)||tutorial?'none':'';
   }
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&SFX.master)SFX.master.gain.setTargetAtTime(0,SFX.ctx.currentTime,.025);});
   window.TrialsPolish={tick,info:()=>({theme:'Midnight Mart',muted,ready:!!audio,decorations:5,embers:32,reducedMotion:reduced.matches})};
