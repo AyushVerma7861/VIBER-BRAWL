@@ -1,25 +1,53 @@
-/* Halloween receipt theme — presentation only.
-   Restyles the result receipt and swaps three strings. No game logic. */
+/* Shared receipt theme for on-screen and exported results. */
 (() => {
   'use strict';
 
+  const theme = window.ReceiptTheme = {
+    paper:'#191009', ink:'#F6E7CE', muted:'#B98150', hero:'#FFD9A8',
+    accent:'#E2571F', rule:'#3A2416', fail:'#F09595',
+    subtitle:'UNIT 07 · AISLE 7 · ALL HALLOWS', stamp:'TRICK OR TREAT',
+    drawPumpkin(g,x,y,size){
+      const svg = document.querySelector('.rcHead svg');
+      if(!svg) return;
+      g.save(); g.translate(x,y); g.scale(size/16,size/16);
+      for(const p of svg.querySelectorAll('path')) {
+        const path = new Path2D(p.getAttribute('d'));
+        if(p.getAttribute('fill') !== 'none'){ g.fillStyle=p.getAttribute('fill'); g.fill(path); }
+        if(p.hasAttribute('stroke')){g.strokeStyle=p.getAttribute('stroke');g.lineWidth=1.1;g.stroke(path);}
+      }
+      g.restore();
+    }
+  };
   const css = `
     #receiptWrap{ background:rgba(6,3,1,.82); }
-    .rcPaper{ background:#191009; color:#F6E7CE;
+    .rcPaper{ background:${theme.paper}; color:${theme.ink};
       box-shadow:0 30px 70px rgba(0,0,0,.8), inset 0 0 0 1px rgba(226,87,31,.34); }
-    .rcPaper::after{ background:repeating-linear-gradient(-45deg,#191009 0 7px,transparent 7px 14px); }
-    .rcHead{ color:#F6E7CE; display:flex; align-items:center; justify-content:center; gap:6px; }
+    .rcPaper::after{ background:repeating-linear-gradient(-45deg,${theme.paper} 0 7px,transparent 7px 14px); }
+    .rcHead{ color:${theme.ink}; display:flex; align-items:center; justify-content:center; gap:6px; }
     .rcHead svg{ display:block; }
-    .rcSub{ color:#B98150; }
-    .rcHero span{ color:#E2571F; }
-    .rcHero b{ color:#FFD9A8; }
-    .rcId i{ color:#B98150; }
-    .rcRow{ border-top-color:#3A2416; }
+    .rcSub{ color:${theme.muted}; }
+    .rcHero span{ color:${theme.accent}; }
+    .rcHero b{ color:${theme.hero}; }
+    .rcId i{ color:${theme.muted}; }
+    .rcRow{ border-top-color:${theme.rule}; }
     .rcRow.first{ border-top-color:#5A3A22; }
-    .rcStamp{ color:#E2571F; }
-    .rcStamp.fail{ color:#F09595; }
-    #rcShare{ background:#E2571F; color:#200A03; }
-    #rcSave{ background:#F6E7CE; color:#191009; }
+    .rcStamp{ color:${theme.accent}; }
+    .rcStamp.fail{ color:${theme.fail}; }
+    #rcShare{ background:${theme.accent}; color:#200A03; }
+    #rcSave{ background:${theme.ink}; color:${theme.paper}; }
+    /* The visible receipt uses the same renderer as SAVE/SHARE. Keep the
+       original text accessible to screen readers without a second design. */
+    .rcPaper{width:min(1000px,96vw,74vh)!important;padding:0!important;background:transparent;box-shadow:none;}
+    .rcPaper::after{display:none;}
+    .rcPaper > :not(.rcPreview){position:absolute!important;width:1px!important;
+      height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden;
+      clip:rect(0,0,0,0);white-space:nowrap;}
+    .rcPreview{display:block;width:100%;height:auto;}
+    #rcShare:disabled{opacity:.45;cursor:wait;}
+    #rcShareHelp{max-width:540px;margin:12px auto 0;padding:12px;background:#191009;
+      color:#F6E7CE;border:1px solid #5A3A22;font:13px/1.5 system-ui;text-align:center;}
+    #rcShareHelp p{margin:0 0 8px;}
+    #rcShareHelp a{color:#FFD9A8;font-weight:700;}
   `;
   const style = document.createElement('style');
   style.textContent = css;
@@ -33,50 +61,6 @@
     <path d="M8 2.4c0-.6.2-1.1.6-1.5" stroke="#3E7A32" stroke-width="1.1" stroke-linecap="round" fill="none"/>
   </svg>`;
 
-  function dressHeader() {
-    const head = document.querySelector('.rcPaper .rcHead');
-    if (head && !head.querySelector('svg')) head.insertAdjacentHTML('afterbegin', PUMPKIN);
-    const sub = document.getElementById('rcSub');
-    if (sub && !/ALL HALLOWS/.test(sub.textContent)) {
-      sub.innerHTML = 'UNIT 07 &middot; AISLE 7 &middot; ALL HALLOWS';
-    }
-  }
-
-  /* row labels are left alone on purpose - they are cans on a shelf, and a
-     receipt that lies about its own stock is a worse joke than no joke */
-  function dressRows() {}
-
-  function dressStamp() {
-    const stamp = document.getElementById('rcStamp');
-    if (!stamp) return;
-    /* only the win stamp changes. The loss already says INSUFFICIENT FUNDS,
-       which is the better joke and has nothing to do with sweets. */
-    if (/THANK YOU FOR SHOPPING/.test(stamp.textContent)) stamp.textContent = 'TRICK OR TREAT';
-  }
-
-  const wrap = document.getElementById('receiptWrap');
-  if (!wrap) return;
-
-  /* the barcode is drawn in dark ink by the game - on dark paper it vanishes,
-     so repaint the same bars in cream (keeps the pattern, flips the colour) */
-  function fixBarcode() {
-    const c = document.getElementById('rcBar');
-    if (!c) return;
-    const g = c.getContext('2d');
-    const d = g.getImageData(0, 0, c.width, c.height);
-    let touched = false;
-    for (let i = 0; i < d.data.length; i += 4) {
-      if (d.data[i + 3] > 0) {
-        d.data[i] = 0xF6; d.data[i + 1] = 0xE7; d.data[i + 2] = 0xCE;
-        touched = true;
-      }
-    }
-    if (touched) g.putImageData(d, 0, 0);
-  }
-
-  const obs = new MutationObserver(() => {
-    if (!wrap.classList.contains('on')) return;
-    dressHeader(); dressRows(); dressStamp(); fixBarcode();
-  });
-  obs.observe(wrap, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+  const head = document.querySelector('.rcPaper .rcHead');
+  if(head) head.insertAdjacentHTML('afterbegin', PUMPKIN);
 })();

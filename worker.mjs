@@ -473,6 +473,19 @@ async function handlePlayer(request, env) {
   return json({ ok: true, id: id, name: name, created: true }, 200, { 'set-cookie': playerCookie(token, ttl, isHttps) });
 }
 
+/* One ranking rule for board and result receipts: one best time per player.
+   Equal times share a rank; a slower new attempt retains the personal best. */
+async function bestStanding(db, playerId) {
+  const best = await db.prepare('SELECT MIN(ms) AS ms FROM runs WHERE player_id = ?')
+    .bind(playerId).first();
+  if (!best || !best.ms) return null;
+  const above = await db.prepare(
+    'SELECT COUNT(*) AS c FROM (SELECT player_id, MIN(ms) AS b FROM runs GROUP BY player_id) WHERE b < ?'
+  ).bind(best.ms).first();
+  const me = await db.prepare('SELECT token_id FROM players WHERE id = ?').bind(playerId).first();
+  return { rank: (above ? above.c : 0) + 1, ms: best.ms, token_id: me ? me.token_id : null };
+}
+
 /* GET /api/leaderboard - the top five, plus the caller's own rank.
    Five because a short board reads as "new" rather than "empty", and the
    caller always sees where they stand even when they are nowhere near it. */
@@ -480,28 +493,18 @@ async function handleBoard(request, env) {
   const { results } = await env.DB.prepare(
     /* one row per player - their BEST run. Listing every run let one person
        take all five slots. */
-    'SELECT COALESCE(p.name, r.name) AS name, r.ms, p.token_id FROM runs r '
+    'SELECT COALESCE(p.name, r.name) AS name, r.ms, p.token_id, '
+    + '(SELECT COUNT(*) + 1 FROM (SELECT player_id, MIN(ms) AS b FROM runs GROUP BY player_id) WHERE b < r.ms) AS rank FROM runs r '
     + 'LEFT JOIN players p ON p.id = r.player_id '
     + 'WHERE r.ms = (SELECT MIN(r2.ms) FROM runs r2 WHERE r2.player_id = r.player_id) '
     + 'GROUP BY r.player_id '
-    + 'ORDER BY r.ms ASC, r.created_at ASC LIMIT 5'
+    + 'ORDER BY r.ms ASC, MIN(r.created_at) ASC, r.player_id ASC LIMIT 5'
   ).all();
 
   let you = null;
   const p = await playerFrom(request, env);
   if (p) {
-    const best = await env.DB.prepare(
-      'SELECT MIN(ms) AS ms FROM runs WHERE player_id = ?'
-    ).bind(p.w).first();
-    if (best && best.ms) {
-      /* rank by PLAYERS, not runs: three runs from one person must not push
-         everyone else down three places */
-      const above = await env.DB.prepare(
-        'SELECT COUNT(*) AS c FROM (SELECT player_id, MIN(ms) AS b FROM runs GROUP BY player_id) WHERE b < ?'
-      ).bind(best.ms).first();
-      const me = await env.DB.prepare('SELECT token_id FROM players WHERE id = ?').bind(p.w).first();
-      you = { rank: (above ? above.c : 0) + 1, ms: best.ms, token_id: me ? me.token_id : null };
-    }
+    you = await bestStanding(env.DB, p.w);
   }
 
   return json({ ok: true, rows: results || [], you: you }, 200, { 'cache-control': 'no-store' });
@@ -568,8 +571,9 @@ async function handleRunFinish(request, env) {
     'UPDATE players SET best_ms = MIN(COALESCE(best_ms, ?), ?) WHERE id = ?'
   ).bind(ms, ms, p.w).run();
 
-  const above = await env.DB.prepare('SELECT COUNT(*) AS c FROM runs WHERE ms < ?').bind(ms).first();
-  return json({ ok: true, rank: (above ? above.c : 0) + 1 });
+  const standing = await bestStanding(env.DB, p.w);
+  return json({ ok: true, rank: standing ? standing.rank : null,
+    best_ms: standing ? standing.ms : ms, rank_basis: 'personal_best' });
 }
 
 
@@ -840,3 +844,4 @@ export default {
 
 /* exported for the local test harness */
 export const __test = { verifyPrivyToken, signSession, readSession, balancesFor, contractsFrom, padAddress };
+

@@ -84,7 +84,7 @@
       return '<div class="lbempty"><b>NO CLEARS YET</b>BE THE FIRST NAME HERE</div>';
     }
     return rows.map(function (r, k) {
-      var place = k + 1;
+      var place = Number.isInteger(r.rank) && r.rank > 0 ? r.rank : k + 1;
       var cls = 'lbr' + (place <= 3 ? ' p' + place : '');
       var face = r.token_id
         ? '<img class="face" src="/avatars/' + r.token_id + '.webp" alt="" loading="lazy"'
@@ -154,3 +154,4 @@
 
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
 })();
+

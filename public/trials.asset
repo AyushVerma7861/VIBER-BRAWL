@@ -1961,6 +1961,12 @@ function disposeBoss(){
 }
 
 function startFight(){
+  window.__lastRank = null;
+  window.__lastReceipt = null;
+  window.__rcAvatarImg = null;
+  window.__runMs = null;
+  document.getElementById('endKicker').textContent = '';
+
   disposeBoss();
   cans.forEach(c=>removeCan(c)); cans.length=0;
   coins.forEach(c=>removeCoin(c)); coins.length=0;
@@ -2307,7 +2313,8 @@ function endFight(win){
    the player reads, and onto a 1080x1350 canvas they can post.
    ---------------------------------------------------------------------- */
 function ctFmt(t){
-  var m=Math.floor(t/60), sec=Math.floor(t%60), d=Math.floor((t%1)*10);
+  var tenths=Math.floor((Math.max(0,t)+1e-9)*10);
+  var m=Math.floor(tenths/600), sec=Math.floor(tenths/10)%60, d=tenths%10;
   return m+':'+String(sec).padStart(2,'0')+'.'+d;
 }
 function receiptData(win){
@@ -2318,7 +2325,7 @@ function receiptData(win){
   const per  = max / CANS;
   const hp   = Math.max(0, Math.min(max, P.hp));
   const lost = Math.min(CANS, Math.max(0, Math.ceil((max - hp) / per - 1e-6)));
-  const phase = Math.min(3, boss ? (boss.phase|0)+1 : 1);
+  const phase = Math.max(1, Math.min(3, boss ? (boss.phase|0) : 1));
   const no = String(1000 + ((Math.round(time*10)*37 + lost*91 + phase*17) % 9000));
   /* who ran it - the card is worthless if nobody can tell whose run it is */
   let who=null, av=null;
@@ -2327,7 +2334,23 @@ function receiptData(win){
     if(a){ who = a.name || null; av = a.avatarId || null; }
   }catch(e){}
   return { win:!!win, time:time, lost:lost, cans:CANS, max:max, phase:phase, no:no,
-           name:who, avatarId:av, rank:window.__lastRank || null };
+           name:who, avatarId:av, rank:win ? (window.__lastRank || null) : null };
+}
+function receiptRankText(d){
+  return d.win && d.rank ? '#' + d.rank + ' · PERSONAL BEST' : 'UNRANKED';
+}
+function receiptLabels(d){
+  return window.ReceiptTheme || {
+    paper:'#F4F1E8', ink:'#1A1A16', muted:'#6B675C', hero:'#1A1A16',
+    accent:'#6B675C', rule:'#CFC8B6', fail:'#A32D2D',
+    subtitle:'UNIT 07 · AISLE 7', stamp:'THANK YOU FOR SHOPPING'
+  };
+}
+function receiptSubtitle(d){
+  return receiptLabels(d).subtitle + (d.win ? '' : ' · TRANSACTION VOID');
+}
+function receiptStamp(d){
+  return d.win ? receiptLabels(d).stamp : 'INSUFFICIENT FUNDS';
 }
 function receiptRows(d){
   const rows = [
@@ -2343,7 +2366,7 @@ function receiptRows(d){
 function rcBarcode(cv, seed){
   const g=cv.getContext('2d'), w=cv.width, h=cv.height;
   g.clearRect(0,0,w,h);
-  g.fillStyle='#1A1A16';
+  g.fillStyle=receiptLabels({}).ink;
   let x=3, rnd=seed||1234;
   const next=function(){ rnd=(rnd*1103515245+12345)&0x7fffffff; return rnd/0x7fffffff; };
   while(x<w-3){
@@ -2377,7 +2400,7 @@ function ctRound(g, x, y, w, h, r) {
 }
 
 function receiptCanvas(d) {
-  if(!d.avatarImg && d.avatarId && window.__rcAvatarImg) d.avatarImg = window.__rcAvatarImg;
+  var theme = receiptLabels(d);
   var W = 1080, H = 1350;
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -2390,7 +2413,7 @@ function receiptCanvas(d) {
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
 
   var glow = g.createRadialGradient(W / 2, 320, 40, W / 2, 320, 640);
-  glow.addColorStop(0, d.win ? 'rgba(223,249,2,0.09)' : 'rgba(255,90,95,0.10)');
+  glow.addColorStop(0, d.win ? 'rgba(226,87,31,0.09)' : 'rgba(255,90,95,0.10)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = glow; g.fillRect(0, 0, W, H);
 
@@ -2403,13 +2426,13 @@ function receiptCanvas(d) {
   g.save();
   g.shadowColor = 'rgba(0,0,0,0.66)';
   g.shadowBlur = 74; g.shadowOffsetY = 28;
-  g.fillStyle = '#F4F1E8';
+  g.fillStyle = theme.paper;
   g.fillRect(px, py, pw, ph);
   g.restore();
 
   /* torn edge — full width */
   var teeth = 18, tw = pw / teeth;
-  g.fillStyle = '#F4F1E8';
+  g.fillStyle = theme.paper;
   for (var i = 0; i < teeth; i++) {
     g.beginPath();
     g.moveTo(px + i * tw, py + ph);
@@ -2419,7 +2442,7 @@ function receiptCanvas(d) {
   }
 
   var rule = function (y, dash) {
-    g.strokeStyle = '#CFC8B6'; g.lineWidth = 2;
+    g.strokeStyle = theme.rule; g.lineWidth = 2;
     g.setLineDash(dash || [8, 7]);
     g.beginPath(); g.moveTo(ix, y); g.lineTo(ix + iw, y); g.stroke();
     g.setLineDash([]);
@@ -2427,29 +2450,32 @@ function receiptCanvas(d) {
 
   /* header */
   g.textAlign = 'center';
-  g.fillStyle = '#1A1A16';
+  g.fillStyle = theme.ink;
   g.font = '700 46px "JetBrains Mono", monospace';
   g.fillText('CHOG MART', mid, py + 92);
-  g.fillStyle = '#6B675C';
+  if(window.ReceiptTheme) window.ReceiptTheme.drawPumpkin(g, mid - 180, py + 56, 36);
+  g.fillStyle = theme.muted;
   g.font = '400 19px "JetBrains Mono", monospace';
-  g.fillText('UNIT 07 · AISLE 7 · MONAD', mid, py + 126);
+  g.font = '400 16px "JetBrains Mono", monospace';
+  g.fillText(receiptSubtitle(d), mid, py + 126);
 
   rule(py + 158);
 
   /* hero time */
-  g.fillStyle = '#8A8577';
+  g.fillStyle = theme.muted;
   g.font = '700 17px "JetBrains Mono", monospace';
   g.fillText('TIME', mid, py + 200);
 
-  g.fillStyle = '#1A1A16';
+  g.fillStyle = theme.ink;
+  g.fillStyle = theme.hero;
   g.font = '800 138px "JetBrains Mono", monospace';
   g.fillText(ctFmt(d.time), mid, py + 330);
 
   /* result chip */
   var chipW = 240, chipH = 48, chipY = py + 358;
-  g.fillStyle = d.win ? '#DFF902' : '#A32D2D';
+  g.fillStyle = d.win ? theme.accent : theme.fail;
   ctRound(g, mid - chipW / 2, chipY, chipW, chipH, 24); g.fill();
-  g.fillStyle = d.win ? '#0C0F08' : '#F4F1E8';
+  g.fillStyle = theme.paper;
   g.font = '700 20px "JetBrains Mono", monospace';
   g.fillText(d.win ? 'CLEARED' : 'FAILED', mid, chipY + 32);
 
@@ -2471,12 +2497,13 @@ function receiptCanvas(d) {
     ctRound(g, left, idY - 58, av, av, 14); g.stroke();
   }
   g.textAlign = 'left';
-  g.fillStyle = '#1A1A16';
+  g.fillStyle = theme.ink;
   g.font = '700 34px "JetBrains Mono", monospace';
   g.fillText(name, left + (d.avatarImg ? av + gap : 0), idY - 12);
-  g.fillStyle = '#8A8577';
+  g.fillStyle = theme.muted;
   g.font = '400 18px "JetBrains Mono", monospace';
-  g.fillText(d.rank || 'UNRANKED', left + (d.avatarImg ? av + gap : 0), idY + 18);
+  g.fillText(receiptRankText(d), left + (d.avatarImg ? av + gap : 0), idY + 18);
+  if(d.win && d.bestMs > 0) g.fillText('BEST ' + ctFmt(d.bestMs / 1000), left + (d.avatarImg ? av + gap : 0), idY + 42);
   g.textAlign = 'center';
 
   /* rows */
@@ -2489,11 +2516,11 @@ function receiptCanvas(d) {
   rows.forEach(function (r) {
     rule(ry - 34);
     g.textAlign = 'left';
-    g.fillStyle = '#6B675C';
+    g.fillStyle = theme.muted;
     g.font = '400 21px "JetBrains Mono", monospace';
     g.fillText(r[0], ix, ry);
     g.textAlign = 'right';
-    g.fillStyle = '#1A1A16';
+    g.fillStyle = theme.ink;
     g.font = '700 25px "JetBrains Mono", monospace';
     g.fillText(r[1], ix + iw, ry);
     g.textAlign = 'center';
@@ -2502,52 +2529,112 @@ function receiptCanvas(d) {
   rule(ry - 34);
 
   /* stamp */
-  g.fillStyle = d.win ? '#6B675C' : '#A32D2D';
+  g.fillStyle = d.win ? theme.accent : theme.fail;
   g.font = '700 18px "JetBrains Mono", monospace';
-  g.fillText(d.win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS', mid, ry + 40);
+  g.fillText(receiptStamp(d), mid, ry + 40);
 
   /* barcode */
   var bar = document.createElement('canvas');
-  bar.width = 640; bar.height = 92;
-  ctBarcode(bar, parseInt(d.no, 10));
-  g.drawImage(bar, mid - 320, ry + 74);
+  bar.width = 294; bar.height = 30;
+  rcBarcode(bar, parseInt(d.no, 10));
+  g.imageSmoothingEnabled = false;
+  g.drawImage(bar, mid - 320, ry + 74, 640, 65);
 
   /* footer */
-  g.fillStyle = '#5E5A4E';
+  g.fillStyle = theme.muted;
   g.font = '700 16px "JetBrains Mono", monospace';
   g.fillText('CHOG TRIALS · VIBER BRAWL', mid, py + ph - 58);
-  g.fillStyle = '#8A8577';
+  g.fillStyle = theme.muted;
   g.font = '400 15px "JetBrains Mono", monospace';
   g.fillText('viber-brawl.viberbrawl.workers.dev', mid, py + ph - 32);
 
   return cv;
 }
 function receiptText(d){
-  const cans = d.lost + (d.lost === 1 ? ' can' : ' cans');
   return d.win
-    ? 'Cleared CHOG MART in ' + d.time.toFixed(1) + 's — ' + cans + ' lost.\n\nviber-brawl.viberbrawl.workers.dev'
-    : 'The machine kept my stock — ' + d.time.toFixed(1) + 's, phase ' + d.phase + '.\n\nviber-brawl.viberbrawl.workers.dev';
+    ? 'SNAX said “no refunds.” My Chog took that personally. 😎🥤\n\nCHOG TRIALS cleared in ' + ctFmt(d.time) + '. @ChogNFT\n\nDrink secured. Receipt attached. Beat my time:\nhttps://viber-brawl.viberbrawl.workers.dev/trials'
+    : 'SNAX denied my refund and won this round. 🥤👻 I reached phase ' + d.phase + ' in CHOG TRIALS. Think you can beat it?\n\nhttps://viber-brawl.viberbrawl.workers.dev/trials';
 }
-function receiptBlob(d){
-  return new Promise(function(res){ receiptCanvas(d).toBlob(res, 'image/png'); });
+let shareHeroPromise;
+function shareHero(){
+  if(!shareHeroPromise) shareHeroPromise=new Promise(function(resolve){
+    const image=new Image(); image.onload=function(){resolve(image);};
+    image.onerror=function(){resolve(null);}; image.src='/share-hero.png';
+  });
+  return shareHeroPromise;
+}
+async function resultCanvas(d){
+  const hero=d.win ? await shareHero() : null;
+  if(!hero) return receiptCanvas(d);
+  const cv=document.createElement('canvas'); cv.width=1600; cv.height=900;
+  const g=cv.getContext('2d');
+  const scale=Math.max(cv.width/hero.width,cv.height/hero.height);
+  g.drawImage(hero,(cv.width-hero.width*scale)/2,(cv.height-hero.height*scale)/2,hero.width*scale,hero.height*scale);
+  const shade=g.createLinearGradient(860,0,1600,0);
+  shade.addColorStop(0,'rgba(12,4,25,0)');shade.addColorStop(.35,'rgba(12,4,25,.53)');shade.addColorStop(1,'rgba(12,4,25,.86)');
+  g.fillStyle=shade;g.fillRect(860,0,740,900);
+  g.fillStyle='#F6E7CE';g.font='700 27px "JetBrains Mono",monospace';
+  g.fillText('CHOG TRIALS',1055,85);
+  const paper=receiptCanvas(d);
+  g.shadowColor='rgba(0,0,0,.65)';g.shadowBlur=26;
+  g.drawImage(paper,84,134,912,1082,975,105,600,712);
+  return cv;
+}
+async function receiptBlob(d){
+  // Export the visible snapshot, including the same font and avatar state.
+  const preview = window.__lastReceipt === d && document.querySelector('.rcPreview');
+  const canvas=preview || await resultCanvas(d);
+  return new Promise(function(res){ canvas.toBlob(res, 'image/png'); });
+}
+let receiptPreviewVersion = 0, preparedShare = null;
+async function refreshReceiptPreview(d){
+  if(window.__lastReceipt !== d) return;
+  const version = ++receiptPreviewVersion;
+  preparedShare = null;
+  document.getElementById('rcShare').disabled = true;
+  const paper = document.querySelector('.rcPaper');
+  const canvas = await resultCanvas(d);
+  if(window.__lastReceipt !== d || version !== receiptPreviewVersion) return;
+  const old = paper.querySelector('.rcPreview');
+  canvas.className = 'rcPreview';
+  canvas.setAttribute('aria-hidden','true');
+  if(old) old.replaceWith(canvas); else paper.appendChild(canvas);
+  const blob = await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if(window.__lastReceipt !== d || version !== receiptPreviewVersion) return;
+  if(!blob) { toast('Could not prepare the image. Try SAVE again.',2800); return; }
+  preparedShare = { receipt:d, blob:blob,
+    file:new File([blob], 'chog-trials-result.png', {type:'image/png'}), text:receiptText(d) };
+  document.getElementById('rcShare').disabled = false;
+}
+function showShareHelp(text, imageReady, message){
+  let help=document.getElementById('rcShareHelp');
+  if(!help){help=document.createElement('div');help.id='rcShareHelp';document.querySelector('.rcCol').appendChild(help);}
+  help.replaceChildren();help.setAttribute('role','status');
+  const p=document.createElement('p');p.textContent=message+' '+(imageReady?'Paste the copied image into your post.':'Attach the downloaded result image.');
+  const link=document.createElement('a');link.textContent='OPEN X';link.target='_blank';link.rel='noopener noreferrer';
+  link.href='https://x.com/intent/post?text='+encodeURIComponent(text);
+  help.append(p,link);
 }
 async function shareReceipt(){
   const d = window.__lastReceipt; if(!d) return;
-  const blob = await receiptBlob(d);
-  const file = new File([blob], 'chog-mart-receipt.png', { type:'image/png' });
-  const text = receiptText(d);
-
-  /* Phones: the OS share sheet. X is in the list and the image goes with it. */
-  if(navigator.canShare && navigator.canShare({ files:[file] })){
-    try{ await navigator.share({ files:[file], text:text }); return; }catch(e){ /* user cancelled */ }
+  const prepared=preparedShare;
+  if(!prepared || prepared.receipt!==d){toast('Preparing your result image. Try again in a moment.',2200);return;}
+  document.getElementById('rcShareHelp')?.remove();
+  const {blob,file,text}=prepared;
+  let native=false;
+  try{native=!!(navigator.share && navigator.canShare && navigator.canShare({files:[file]}));}catch(e){}
+  if(native){
+    try{await navigator.share({files:[file],text:text});return;}
+    catch(e){
+      if(e && e.name==='AbortError') return;
+      saveReceiptBlob(blob);
+      showShareHelp(text,false,'Sharing was unavailable. Your image was saved.');
+      return;
+    }
   }
-
-  /* Desktop: X's composer takes text from a link but never an image, so the
-     receipt goes to the clipboard and the composer opens ready to paste.
-     The tab has to be opened BEFORE any further await - a popup needs the
-     click's activation, and the clipboard call consumes it. */
-  const xwin = window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text), '_blank');
-
+  /* Prepared before the click: open X while browser activation is still live. */
+  let xwin=null;
+  try{xwin=window.open('https://x.com/intent/post?text='+encodeURIComponent(text),'_blank');if(xwin)xwin.opener=null;}catch(e){}
   let onClipboard = false;
   try{
     if(typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write){
@@ -2556,13 +2643,14 @@ async function shareReceipt(){
     }
   }catch(e){ /* permission denied - fall back to a download */ }
 
-  if(onClipboard) toast('X OPENED · PASTE THE RECEIPT', 2800);
-  else { saveReceiptBlob(blob); toast('X OPENED · RECEIPT SAVED', 2800); }
+  if(!onClipboard) saveReceiptBlob(blob);
+  if(!xwin){showShareHelp(text,onClipboard,'Your browser blocked the X window. Use the link below.');return;}
+  toast(onClipboard?'X OPENED · PASTE THE RESULT IMAGE':'X OPENED · ATTACH THE SAVED IMAGE',3200);
 }
 function saveReceiptBlob(blob){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='chog-mart-receipt.png';
+  a.download='chog-trials-result.png';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
 }
@@ -2574,23 +2662,28 @@ async function saveReceipt(){
 function showReceipt(win){
   const d = receiptData(win);
   window.__lastReceipt = d;
+  preparedShare = null;
+  document.getElementById('rcShareHelp')?.remove();
+  const previousPreview=document.querySelector('.rcPreview');
+  if(previousPreview) previousPreview.remove();
   document.getElementById('rcRows').innerHTML = receiptRows(d);
   const stamp = document.getElementById('rcStamp');
-  stamp.textContent = win ? 'THANK YOU FOR SHOPPING' : 'INSUFFICIENT FUNDS';
+  stamp.textContent = receiptStamp(d);
   stamp.classList.toggle('fail', !win);
-  document.getElementById('rcSub').textContent = win ? 'UNIT 07 · AISLE 7' : 'UNIT 07 · AISLE 7 · TRANSACTION VOID';
+  document.getElementById('rcSub').textContent = receiptSubtitle(d);
   rcBarcode(document.getElementById('rcBar'), parseInt(d.no,10));
   document.getElementById('rcTime').textContent = ctFmt(d.time);
   document.getElementById('rcName').textContent = d.name || 'GUEST';
-  document.getElementById('rcRank').textContent = d.rank ? ('#' + d.rank + ' ON THE BOARD') : 'UNRANKED';
+  document.getElementById('rcRank').textContent = receiptRankText(d);
   const avEl = document.getElementById('rcAv');
   if(d.avatarId){
     avEl.src = '/avatars/' + d.avatarId + '.webp'; avEl.classList.add('on');
     /* same image feeds the share card, which is drawn on a canvas */
-    const im = new Image(); im.onload = function(){ window.__rcAvatarImg = im; };
+    const im = new Image(); im.onload = function(){ d.avatarImg = im; refreshReceiptPreview(d); };
     im.src = '/avatars/' + d.avatarId + '.webp';
   }
   else { avEl.classList.remove('on'); avEl.removeAttribute('src'); }
+  refreshReceiptPreview(d);
   /* replay the paper drop - the element exists from page load, so the
      animation had long since finished by the time it was ever shown */
   const paper = document.querySelector('.rcPaper');
@@ -5170,7 +5263,7 @@ requestAnimationFrame(loop);
   /* ---------------------------------------------------------------- runs
      The server owns the clock. It issues a ticket when the run starts and
      refuses any time it could not have taken, so nothing here is trusted. */
-  var runTicket = null, runStart = 0, runSent = false, runPromise = null;
+  var activeRun = null;
 
   /* the game's own toast element, so a refusal reads like part of the game */
   function say(msg) {
@@ -5182,19 +5275,15 @@ requestAnimationFrame(loop);
   }
 
   function startRun() {
-    runTicket = null; runSent = false; runStart = Date.now();
-    /* keep the promise: if the boss dies before the ticket arrives, finishRun
-       waits for it instead of abandoning the run */
-    runPromise = fetch('/api/run/start', { method: 'POST', credentials: 'same-origin' })
-      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
-      .then(function (o) {
-        if (o.d && o.d.ok) { runTicket = o.d.ticket; return; }
-        /* no ticket means this run will not count - say so, do not let them
-           fight for nothing */
-        if (o.d && o.d.reason === 'not_holder') say('No Chog in this wallet — this run will not be recorded');
-        else if (o.d && o.d.reason === 'no_player') say('Sign in with a wallet to record this run');
-      })
-      .catch(function () {});
+    var run = activeRun = { started:Date.now(), sent:false, ticket:null };
+    run.promise = fetch('/api/run/start', {method:'POST', credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.ok) { run.ticket=d.ticket; return; }
+        if(activeRun !== run) return;
+        if(d && d.reason === 'not_holder') say('No Chog in this wallet — this run will not be recorded');
+        else if(d && d.reason === 'no_player') say('Sign in with a wallet to record this run');
+      }).catch(function(){});
   }
 
   /* Every refusal says why. A run that vanishes without a word is worse than
@@ -5211,33 +5300,37 @@ requestAnimationFrame(loop);
   }
 
   function finishRun() {
-    if (runSent) return;
-    runSent = true;
-    var ms = (window.__runMs && window.__runMs > 0)
-      ? window.__runMs
-      : (Date.now() - runStart);
-
-    /* wait for a ticket that is still in flight - a slow start must not
-       silently bin an otherwise good run */
-    Promise.resolve(runPromise).then(function () {
-      if (!runTicket) { say('Could not get a run ticket — this run was not recorded'); return; }
+    var run = activeRun;
+    if(!run || run.sent) return;
+    run.sent = true;
+    var ms = window.__runMs > 0 ? window.__runMs : Date.now()-run.started;
+    Promise.resolve(run.promise).then(function(){
+      if(activeRun !== run) return;
+      if(!run.ticket) { say('Could not get a run ticket — this run was not recorded'); return; }
       return fetch('/api/run/finish', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: runTicket, ms: ms })
-      }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
-        .then(function (o) {
-          var d = o.d;
-          if (d && d.ok) {
-            window.__lastRank = d.rank || null;
-            var el = document.getElementById('endSub');
-            if (el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) + ' — you are #' + d.rank + ' on the board.';
-            return;
+        method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:run.ticket, ms:ms})
+      }).then(function(r){return r.json();}).then(function(d){
+        if(activeRun !== run) return;
+        if(d && d.ok) {
+          var rank = Number.isInteger(d.rank) && d.rank > 0 ? d.rank : null;
+          window.__lastRank = rank;
+          var receipt = window.__lastReceipt;
+          if(receipt && receipt.win) {
+            receipt.rank = rank;
+            receipt.bestMs = d.best_ms || null;
+            document.getElementById('rcRank').textContent = receiptRankText(receipt);
+            refreshReceiptPreview(receipt);
           }
-          say(refuseReason(d));
-        });
-    }).catch(function () {
-      say('Could not reach the server — this run was not recorded');
+          var el = document.getElementById('endSub');
+          if(el) el.textContent = 'Cleared in ' + window.LB.fmt(ms) +
+            (rank ? ' — personal-best rank #' + rank + (d.best_ms ? ' (best ' + ctFmt(d.best_ms / 1000) + ').' : '.') : ' — run recorded.');
+          return;
+        }
+        say(refuseReason(d));
+      });
+    }).catch(function(){
+      if(activeRun === run) say('Could not reach the server — this run was not recorded');
     });
   }
 
@@ -5273,3 +5366,4 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+

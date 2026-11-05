@@ -115,14 +115,31 @@
   }
 
   /* the server is the source of truth for identity; it sets the cookie */
-  function syncPlayer(name) {
+  async function syncPlayer(name) {
+    var controller = new AbortController();
+    var timer = setTimeout(function(){ controller.abort(); }, 15000);
     try {
-      return fetch('/api/player', {
+      var response = await fetch('/api/player', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name })
-      }).then(function (r) { return r.json(); }).catch(function () { return null; });
-    } catch (e) { return Promise.resolve(null); }
+        body: JSON.stringify({ name: name }), signal: controller.signal
+      });
+      var data = await response.json();
+      if (!response.ok || !data || !data.ok) {
+        var error = new Error('Name was not saved');
+        error.reason = (data && data.reason) || 'server_error';
+        throw error;
+      }
+      return data;
+    } finally { clearTimeout(timer); }
+  }
+
+  function nameSaveError(error) {
+    var reason = error && error.reason;
+    if (reason === 'rate_limited') return 'Too many attempts. Wait a moment, then retry.';
+    if (reason === 'no_session') return 'Your sign-in expired. Sign in again, then retry.';
+    if (reason === 'bad_name') return 'Use 1–12 letters, numbers, spaces, _ or -.';
+    return 'Could not save your name. Check your connection and retry.';
   }
 
   /* ---------------------------------------------------------- first run */
@@ -143,16 +160,25 @@
       setTimeout(function () { input.focus(); }, 60);
 
       function valid() { return /^[A-Za-z0-9 _-]{1,12}$/.test(input.value.trim()); }
-      function sync() { go.disabled = !valid(); }
+      var busy = false, random = w.querySelector('#acRand'), hint = w.querySelector('.achint');
+      hint.setAttribute('role', 'status'); hint.setAttribute('aria-live', 'polite');
+      function sync() { go.disabled = busy || !valid(); }
       input.addEventListener('input', sync);
       sync();
 
-      function commit(name) {
-        acct = { id: newId(), name: name, email: null, createdAt: Date.now() };
-        save();
-        syncPlayer(name);
-        w.remove();
-        resolve(acct);
+      async function commit(name) {
+        if (busy) return;
+        busy = true; sync(); input.disabled = true; random.disabled = true;
+        hint.textContent = 'Saving your name…';
+        try {
+          var data = await syncPlayer(name);
+          acct = { id: data.id || newId(), name: data.name || name, email: null, createdAt: Date.now() };
+          save(); w.remove(); resolve(acct);
+        } catch (error) {
+          hint.textContent = nameSaveError(error); go.textContent = 'RETRY';
+        } finally {
+          busy = false; input.disabled = false; random.disabled = false; sync();
+        }
       }
       go.addEventListener('click', function () { if (valid()) commit(input.value.trim().toUpperCase()); });
       input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && valid()) commit(input.value.trim().toUpperCase()); });
@@ -276,14 +302,24 @@
       i2.value = acct ? acct.name : '';
       setTimeout(function(){ i2.focus(); i2.select(); }, 60);
       function valid2(){ return /^[A-Za-z0-9 _-]{1,12}$/.test(i2.value.trim()); }
-      function sync2(){ sv.disabled = !valid2(); }
+      var saving = false, cancel = w.querySelector('#acCancel'), hint = w.querySelector('.achint');
+      hint.setAttribute('role', 'status'); hint.setAttribute('aria-live', 'polite');
+      function sync2(){ sv.disabled = saving || !valid2(); }
       i2.addEventListener('input', sync2); sync2();
-      w.querySelector('#acCancel').addEventListener('click', function(){ w.remove(); resolve(null); });
-      sv.addEventListener('click', function(){
-        if(!valid2()) return;
-        acct.name = i2.value.trim().toUpperCase(); save();
-        syncPlayer(acct.name);
-        w.remove(); paintChip(); resolve(acct);
+      cancel.addEventListener('click', function(){ if (!saving) { w.remove(); resolve(null); } });
+      sv.addEventListener('click', async function(){
+        if(saving || !valid2()) return;
+        saving = true; sync2(); i2.disabled = true; cancel.disabled = true;
+        hint.textContent = 'Saving your name…';
+        try {
+          var data = await syncPlayer(i2.value.trim().toUpperCase());
+          acct.name = data.name || i2.value.trim().toUpperCase(); save();
+          w.remove(); paintChip(); resolve(acct);
+        } catch (error) {
+          hint.textContent = nameSaveError(error); sv.textContent = 'RETRY';
+        } finally {
+          saving = false; i2.disabled = false; cancel.disabled = false; sync2();
+        }
       });
     });
   }
@@ -334,3 +370,4 @@
     paintChip: paintChip
   };
 })();
+
