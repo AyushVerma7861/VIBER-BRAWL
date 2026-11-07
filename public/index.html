@@ -4984,12 +4984,20 @@ window.addEventListener('pagehide', releaseAllInputs);
 
 let frameAccumulator=0;
 const ARENA_STEP=1/60;
+/* A gap between frames only means the player left or the tab stalled if it is
+   long. 250 ms was too tight: the first frames after a map loads can stall while
+   the shaders compile, and pausing there reads as the game crashing. */
+const ARENA_STALL_LIMIT=1.0;
+const ARENA_GRACE=2;           /* seconds of match time before a stall may pause */
 function advanceArenaFrame(elapsed){
   if(document.hidden || Game.paused || Game.rotPaused || Onboard.active){ frameAccumulator=0; return; }
   if(!Number.isFinite(elapsed)||elapsed<0) return;
-  if(elapsed>0.25){
+  if(elapsed>ARENA_STALL_LIMIT){
     frameAccumulator=0; releaseAllInputs();
-    if(Game.mode==='play'&&!Game.over){ Game.paused=true; showScreen('scrPause'); Music.stop(); }
+    /* Never pause on the opening seconds of a match. A slow first frame there is
+       the device working, not the player walking away. */
+    const underway = Game.matchTime < CFG.matchTime-ARENA_GRACE;
+    if(Game.mode==='play' && !Game.over && underway){ Game.paused=true; showScreen('scrPause'); Music.stop(); }
     return;
   }
   frameAccumulator+=elapsed;
