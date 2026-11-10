@@ -2358,7 +2358,7 @@ const Input={ mx:0,mz:0, jumpHeld:false, jumpPressed:false, q:false,h:false, das
 const keys={};
 window.addEventListener('keydown',e=>{
   SFX.init(); SFX.resume();
-  if(Game.mode!=='play'&&Game.mode!=='tutorial') return;
+  if(Game.mode!=='play'&&Game.mode!=='tutorial'&&Game.mode!=='online') return;
   if(Onboard.active) return;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
   if(keys[e.code]) return;
@@ -2372,7 +2372,7 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>{ keys[e.code]=false; if(e.code==='Space') Input.jumpHeld=false; });
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
-canvas.addEventListener('mousedown',e=>{ if(Game.mode!=='play'&&Game.mode!=='tutorial') return; if(e.button===0) Input.q=true; if(e.button===2) Input.h=true; });
+canvas.addEventListener('mousedown',e=>{ if(Game.mode!=='play'&&Game.mode!=='tutorial'&&Game.mode!=='online') return; if(e.button===0) Input.q=true; if(e.button===2) Input.h=true; });
 function readKeys(){
   let x=0,z=0;
   if(keys['KeyA']||keys['ArrowLeft']) x-=1;
@@ -3527,7 +3527,7 @@ function announce(text,dur,cls){
 }
 function buildCards(){
   ui.cards.innerHTML='';
-  for(let i=0;i<4;i++){
+  for(let i=0;i<fighters.length;i++){
     const f=fighters[i];
     const c=document.createElement('div');
     c.className='pcard'; c.id='card'+i;
@@ -4873,7 +4873,7 @@ function syncOrientation(){
      The only state that still needs tracking is whether a live match must be
      frozen, so a player who rotates mid-fight does not come back to three
      health bars already gone. */
-  const inMatch = show && (Game.mode === 'play' || Game.mode === 'tutorial') && !Game.over;
+  const inMatch = show && (Game.mode === 'play' || Game.mode === 'tutorial' || Game.mode === 'online') && !Game.over;
   if(show === _rotLocked && Game.rotPaused === inMatch){ return; }
 
   _rotLocked = show;
@@ -5009,10 +5009,12 @@ function advanceArenaFrame(elapsed){
   }
 }
 let lastT=performance.now();
+let onlineFrame=null;
 function loop(){
   requestAnimationFrame(loop);
   const now=performance.now(), elapsed=Math.max(0,(now-lastT)/1000); lastT=now;
-  if(Onboard.active){ frameAccumulator=0; ObStage.tick(Math.min(elapsed,0.05)); }
+  if(onlineFrame) onlineFrame(elapsed,now);
+  else if(Onboard.active){ frameAccumulator=0; ObStage.tick(Math.min(elapsed,0.05)); }
   else if(Game.paused||Game.rotPaused||document.hidden){ frameAccumulator=0; releaseAllInputs(); }
   else advanceArenaFrame(elapsed);
   renderer.render(scene,camera);
@@ -5020,6 +5022,86 @@ function loop(){
 
 document.getElementById('loader').style.display='none';
 resetToMenu();
+if(location.pathname==='/online'){
+  import('./online-client.mjs').then(async ({mountOnline,attackTime})=>{
+    const {DASH,HEAVY,JUMP,QUICK,HEALTH,PLATFORMS}=await import('./online-sim.mjs');
+    Game.map='dungeon';
+    showScreen(null);
+    applyMap(Game.map);
+    if(JSON.stringify(platforms)!==JSON.stringify(PLATFORMS)) throw new Error('Dungeon collision geometry changed.');
+    applyHazardsForDifficulty('easy');
+    onlineFrame=mountOnline({
+      lobby(){
+        Game.mode='menu'; Game.over=false;
+        releaseAllInputs();
+        clearArenaTransient();
+        showScreen(null);
+        ui.hud.classList.remove('on');
+        document.body.classList.remove('duel-playing');
+        for(const f of fighterPool) f.group.visible=false;
+      },
+      start(slot){
+        Game.mode='online'; Game.over=false; Game.camYaw=0; Game.shake=0;
+        releaseAllInputs();
+        clearArenaTransient();
+        fighters=[fighterPool.find(f=>f.def.id==='volt'),fighterPool.find(f=>f.def.id==='phantom')];
+        player=fighters[slot];
+        for(const [index,f] of fighters.entries()){
+          f.reset(index===0?-5:5,0);
+          f.isPlayer=f===player; f.maxHealth=HEALTH; f.health=HEALTH; f.invuln=0;
+        }
+        buildCards();
+        ui.hud.classList.add('on');
+        document.body.classList.add('duel-playing');
+        syncOrientation();
+      },
+      input(){
+        if(Game.rotPaused){ releaseAllInputs(); return {x:0,z:0,buttons:0}; }
+        readKeys();
+        const c=playerCtrl();
+        clearEdges();
+        return {x:c.dirX,z:c.dirZ,buttons:(c.jumpPressed?JUMP:0)|(c.dash?DASH:0)|(c.quick?QUICK:0)|(c.heavy?HEAVY:0)};
+      },
+      release:releaseAllInputs,
+      announce:message=>announce(message,0.85),
+      action(actions){
+        if(actions&JUMP) SFX.jump();
+        if(actions&DASH) SFX.dash();
+        if(actions&(QUICK|HEAVY)) SFX.swing();
+      },
+      impact(event){
+        if(event.type==='hit'){
+          fighters[event.slot].flash=0.16;
+          const heavy=event.attack==='heavy';
+          Game.shake=Math.max(Game.shake,heavy?0.62:0.28);
+          impactRing(event.x,event.y+1.4,event.z,heavy?0xDFF902:0xA56BFF,heavy?1.3:0.9);
+          if(heavy) SFX.hitHeavy(); else SFX.hitLight();
+        } else if(event.type==='fall') SFX.fall(); else SFX.ko();
+      },
+      draw(dt,poses,seconds){
+        Game.time+=dt;
+        if(poses){
+          Game.matchTime=seconds;
+          for(const [index,pose] of poses.entries()){
+            const f=fighters[index];
+            f.pos.set(pose.x,pose.y,pose.z);
+            Object.assign(f,{ vx:pose.vx,vy:pose.vy,vz:pose.vz,facing:pose.facing,onGround:pose.grounded,
+              lives:pose.lives,health:pose.health,state:pose.out?'dead':'active',attackType:pose.attack,
+              hitstun:pose.stun/60,invuln:pose.invulnerable/60,flash:Math.max(0,f.flash-dt),
+              attackT:attackTime(pose,ATTACKS[pose.attack]) });
+            if(pose.out) f.group.visible=false;
+            else updateModelTransform(f,dt);
+          }
+          updateHUD();
+        }
+        updateFX(dt); updateCamera(dt); updatePlatformFading(dt);
+      }
+    });
+  }).catch(error=>{
+    console.error(error);
+    showArenaFailure('Dungeon Duel could not start. Reload the page and try again.');
+  });
+}
 Music.start();
 requestAnimationFrame(loop);
 
@@ -5096,7 +5178,7 @@ window.addEventListener('keydown',function onceK(){ SFX.init(); SFX.resume(); Mu
   <div id="trialsLoad">LOADING CHOG TRIALS</div>
   <button id="trialsBack" type="button">&#8592; VIBER BRAWL</button>
 </div>
-<script>window.CHOG_GATE_CONFIG = { privyAppId: 'cmvkwos1x007d0giaefmoqz2c', getChogUrl: 'https://opensea.io/collection/chog-genesis' };</script>
+<script>if(location.pathname!=='/online') window.CHOG_GATE_CONFIG = { privyAppId: 'cmvkwos1x007d0giaefmoqz2c', getChogUrl: 'https://opensea.io/collection/chog-genesis' };</script>
 <script src="client-gate.js"></script>
 <script>
 (function(){

@@ -1,0 +1,72 @@
+body.online-duel #hud.on + #pauseBtn,
+body.online-duel #ability,
+body.online-duel .tbtn[data-act="ability"],
+body.online-duel .shieldLabel,
+body.online-duel .shieldBar,
+body.online-duel:not(.duel-playing) #touch { display: none; }
+
+.duel-panel {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(14, 18, 31, .56);
+}
+.duel-panel[hidden], .duel-panel [hidden], .duel-bar[hidden] { display: none; }
+.duel-lobby {
+  width: min(420px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: clamp(14px, 4vw, 26px);
+  background: #161927;
+  color: #fff4d7;
+  border: 1px solid #645741;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px #090a12aa;
+  touch-action: pan-y;
+}
+.duel-lobby h1 { font-size: clamp(26px, 6vw, 40px); margin: 0; line-height: 1.05; }
+.duel-lobby p { margin: 8px 0 12px; }
+.duel-lobby .duel-label { margin: 0 0 5px; color: #dff902; letter-spacing: .09em; font-size: 12px; }
+.duel-lobby .duel-help { color: #cbc5b8; font-size: 13px; margin-bottom: 0; }
+.duel-lobby label { display: block; margin: 7px 0 3px; font-size: 14px; }
+.duel-row { display: flex; gap: 8px; }
+.duel-lobby input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #746a56;
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: #101320;
+  color: #fff4d7;
+  font: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.duel-lobby button, .duel-bar button {
+  border: 0;
+  border-radius: 8px;
+  background: #dff902;
+  color: #151715;
+  font: inherit;
+  font-weight: 800;
+  padding: 6px 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.duel-lobby button:disabled { opacity: .55; }
+.duel-bar {
+  position: fixed;
+  z-index: 100;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff4d7;
+  font-size: 12px;
+}
+.duel-bar span:not(:empty) { padding: 3px 8px; border-radius: 5px; background: #161927; }
+body.is-touch .duel-bar { right: 50%; transform: translateX(50%); }
