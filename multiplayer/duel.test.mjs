@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ATTACK, DASH, HEAVY, JUMP, QUICK, NONE, createDuel, createFighter, stepDuel, stepFighter } from '../public/online-sim.mjs';
+import { ATTACK, DASH, HEAVY, JUMP, MAX_REWIND_TICKS, QUICK, NONE, createDuel, createFighter, stepDuel, stepFighter } from '../public/online-sim.mjs';
 
 const forward = { x: 1, z: 0, buttons: 0 };
 
@@ -35,6 +35,36 @@ test('quick and heavy hits apply once in the active window', () => {
     assert.ok(b.vx > 0);
     for (let tick = 0; tick < 30; tick++) assert.deepEqual(stepDuel(match, [NONE, NONE]), []);
     assert.equal(b.health, 100 - ATTACK[type].damage);
+  }
+});
+
+test('rewind saves a close late dodge but respects earlier escapes and protection', () => {
+  for (const [type, button] of [['quick', QUICK], ['heavy', HEAVY]]) {
+    const move = ATTACK[type];
+    const start = 16, active = start + move.startup;
+    for (const { dashLead, rewind, protectedAtView, expected } of [
+      { dashLead: 2, rewind: 0, expected: 0 },
+      { dashLead: 2, rewind: MAX_REWIND_TICKS, expected: 1 },
+      { dashLead: 7, rewind: MAX_REWIND_TICKS, expected: 0 },
+      { dashLead: 2, rewind: MAX_REWIND_TICKS + 1, expected: 0 },
+      { dashLead: 2, rewind: MAX_REWIND_TICKS, protectedAtView: true, expected: 0 },
+    ]) {
+      const match = createDuel();
+      match.countdown = 0;
+      const [a, b] = match.fighters;
+      a.x = 0;
+      b.x = move.range - .45;
+      if (protectedAtView) b.invulnerable = active - 1;
+      const hits = [];
+      for (let tick = 1; tick < active + move.active; tick++) {
+        const attack = tick === start ? { ...NONE, buttons: button, rewind } : NONE;
+        const dodge = tick === active - dashLead ? { ...forward, buttons: DASH } : NONE;
+        hits.push(...stepDuel(match, [attack, dodge]).filter(event => event.type === 'hit'));
+      }
+      assert.equal(hits.length, expected, JSON.stringify({ type, dashLead, rewind, protectedAtView }));
+      assert.equal(b.health, 100 - expected * move.damage);
+      if (expected) assert.equal(hits[0].rewind, rewind);
+    }
   }
 });
 

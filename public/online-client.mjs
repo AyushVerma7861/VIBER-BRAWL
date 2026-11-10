@@ -247,7 +247,9 @@ export function mountOnline(arena) {
         accumulator -= STEP;
         const input = { seq: ++seq, ...arena.input() };
         pending.push(input);
-        unsent.push([input.seq, input.x, input.z, input.buttons]);
+        const frame = [input.seq, input.x, input.z, input.buttons];
+        if (input.buttons & (QUICK | HEAVY)) frame.push(Math.floor(renderTick));
+        unsent.push(frame);
         arena.action(stepFighter(predicted, input, latest.fighters[1 - slot]));
         if (unsent.length === 2) {
           send({ type: 'input', round, frames: unsent });

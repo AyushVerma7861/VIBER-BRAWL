@@ -1,10 +1,11 @@
 services:
   - type: web
     name: viber-brawl-online
+    branch: preview/dungeon-duel
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci
+    buildCommand: npm ci && npm test
     startCommand: npm start
     healthCheckPath: /health
     autoDeployTrigger: "off"

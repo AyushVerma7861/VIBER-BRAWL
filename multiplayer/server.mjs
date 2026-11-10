@@ -2,12 +2,14 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createDuel, NONE, ROOM_CODE, STEP, stepDuel } from '../public/online-sim.mjs';
+import { createDuel, HEAVY, MAX_REWIND_TICKS, NONE, QUICK, ROOM_CODE, STEP, stepDuel } from '../public/online-sim.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const maxRooms = 8;
 const snapshotEvery = 3;
+const baseViewTicks = 6;
+const maxViewAge = 18;
 const waitingMs = 10 * 60_000;
 const rooms = new Map();
 
@@ -120,9 +122,10 @@ function startRound(room) {
 }
 
 function broadcast(room, type) {
+  const { history, ...snapshot } = room.duel;
   for (const client of room.players) {
     send(client, {
-      type, round: room.round, ...room.duel,
+      type, round: room.round, ...snapshot,
       ack: client.ack, events: room.events,
     });
   }
@@ -134,13 +137,17 @@ function acceptInput(client, message) {
   if (!duel || duel.countdown > 0 || duel.ended || message.round !== client.room.round ||
       !Array.isArray(message.frames) || message.frames.length > 2) return;
   for (const frame of message.frames) {
-    if (!Array.isArray(frame) || frame.length !== 4) continue;
-    const [seq, x, z, buttons] = frame;
+    if (!Array.isArray(frame) || (frame.length !== 4 && frame.length !== 5)) continue;
+    const [seq, x, z, buttons, viewTick] = frame;
     if (!Number.isSafeInteger(seq) || seq <= client.lastSeq || seq - client.lastSeq > 600 ||
         !Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) > 1 || Math.abs(z) > 1 ||
         !Number.isInteger(buttons) || buttons < 0 || buttons > 15) continue;
     client.lastSeq = seq;
-    client.queue.push({ seq, x, z, buttons });
+    client.queue.push({
+      seq, x, z, buttons,
+      viewTick: (buttons & (QUICK | HEAVY)) && Number.isSafeInteger(viewTick) &&
+        viewTick > 0 && viewTick <= duel.tick ? viewTick : null,
+    });
   }
   // Drop stale movement during long stalls. Never fast-forward a fighter.
   if (client.queue.length > 10) client.queue.splice(0, client.queue.length - 10);
@@ -152,18 +159,33 @@ function nextInput(client, tick) {
     client.ack = input.seq;
     client.lastInputTick = tick;
     client.lastInput = { x: input.x, z: input.z, buttons: 0 };
+    if (input.viewTick !== null) {
+      const age = tick + 1 - input.viewTick;
+      const allowed = Math.min(MAX_REWIND_TICKS, baseViewTicks + Math.round(client.rttMs / (2000 * STEP)));
+      if (age <= maxViewAge) input.rewind = Math.min(age, allowed);
+    }
     return input;
   }
   return tick - client.lastInputTick <= 8 ? client.lastInput : NONE;
 }
 
+function ping(client) {
+  client.pingStarted = performance.now();
+  client.pingPayload = Buffer.from(String(client.pingStarted));
+  client.ping(client.pingPayload);
+}
+
 sockets.on('connection', client => {
   client.room = null;
   client.pongAt = Date.now();
+  client.rttMs = 0;
   let allowance = 80;
   let allowanceAt = performance.now();
   let joinTimeout = setTimeout(() => client.close(), 15_000);
-  client.on('pong', () => { client.pongAt = Date.now(); });
+  client.on('pong', payload => {
+    client.pongAt = Date.now();
+    if (payload.equals(client.pingPayload)) client.rttMs = performance.now() - client.pingStarted;
+  });
   client.on('error', () => client.terminate());
   client.on('close', () => {
     clearTimeout(joinTimeout);
@@ -195,6 +217,7 @@ sockets.on('connection', client => {
       else send(client, { type: 'ready' });
     }
   });
+  ping(client);
 });
 
 let nextTick = performance.now();
@@ -222,7 +245,7 @@ setInterval(() => {
   }
   for (const client of sockets.clients) {
     if (now - client.pongAt > 30_000) client.terminate();
-    else if (client.readyState === WebSocket.OPEN) client.ping();
+    else if (client.readyState === WebSocket.OPEN) ping(client);
   }
 }, 10_000).unref();
 

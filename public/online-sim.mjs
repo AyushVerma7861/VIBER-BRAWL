@@ -6,6 +6,9 @@ export const MATCH_TICKS = 180 * TICK_RATE;
 export const COUNTDOWN = 3 * TICK_RATE;
 export const NONE = Object.freeze({ x: 0, z: 0, buttons: 0 });
 export const JUMP = 1, DASH = 2, QUICK = 4, HEAVY = 8;
+export const MAX_REWIND_TICKS = 9;
+const HISTORY_SIZE = MAX_REWIND_TICKS + 1;
+const MAX_REWIND_REACH = 1;
 export const ATTACK = {
   quick: { startup: 5, active: 6, recovery: 10, damage: 8, range: 3.35, arc: 1.15, force: 10.5, lift: .38, stun: 14 },
   heavy: { startup: 13, active: 8, recovery: 22, damage: 16, range: 3.95, arc: .95, force: 20, lift: .52, stun: 24 },
@@ -48,11 +51,16 @@ export function createFighter(slot, lives = LIVES, life = 0, spawn = slot) {
     invulnerable: life === 0 ? 0 : 72, stun: 0, dashCooldown: 0, dashTicks: 0,
     lock: 0, attack: null, attackAge: 0, hit: false, out: 0,
     queuedAttack: null, attackBuffer: 0, jumpBuffer: 0, dashBuffer: 0,
+    queuedRewind: 0, attackRewind: 0,
   };
 }
 
 export function createDuel() {
-  return { tick: 0, countdown: COUNTDOWN, remaining: MATCH_TICKS, fighters: [createFighter(0), createFighter(1)], winner: null, ended: false };
+  return {
+    tick: 0, countdown: COUNTDOWN, remaining: MATCH_TICKS,
+    fighters: [createFighter(0), createFighter(1)], winner: null, ended: false,
+    history: new Array(HISTORY_SIZE),
+  };
 }
 
 // Runs on both the server and the controlling browser. Effects play separately.
@@ -67,7 +75,10 @@ export function stepFighter(fighter, input, rival) {
   f.jumpBuffer = input.buttons & JUMP ? 6 : Math.max(0, f.jumpBuffer - 1);
   f.dashBuffer = input.buttons & DASH ? 6 : Math.max(0, f.dashBuffer - 1);
   const requestedAttack = input.buttons & QUICK ? 'quick' : input.buttons & HEAVY ? 'heavy' : null;
-  if (requestedAttack) f.queuedAttack = requestedAttack;
+  if (requestedAttack) {
+    f.queuedAttack = requestedAttack;
+    f.queuedRewind = input.rewind ?? 0;
+  }
   f.attackBuffer = requestedAttack ? 6 : Math.max(0, f.attackBuffer - 1);
   if (f.attack) {
     const move = ATTACK[f.attack];
@@ -121,6 +132,7 @@ export function stepFighter(fighter, input, rival) {
         }
         f.attack = f.queuedAttack;
         f.attackAge = 0;
+        f.attackRewind = f.queuedRewind;
         f.invulnerable = 0;
         f.attackBuffer = 0;
         f.hit = false;
@@ -149,17 +161,42 @@ export function stepFighter(fighter, input, rival) {
   return actions;
 }
 
-function contact(a, b) {
+function directionTo(a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const distance = Math.hypot(dx, dz);
+  const facingX = Math.sin(a.facing), facingZ = Math.cos(a.facing);
+  const x = distance > .01 ? dx / distance : facingX;
+  const z = distance > .01 ? dz / distance : facingZ;
+  return { x, z, distance, forward: x * facingX + z * facingZ };
+}
+
+function contact(a, b, previous) {
   if (!a.attack || a.hit || a.out || b.out || b.invulnerable || a.y < -38 || b.y < -38) return null;
   const move = ATTACK[a.attack];
   if (a.attackAge < move.startup || a.attackAge >= move.startup + move.active) return null;
-  const dx = b.x - a.x, dz = b.z - a.z;
-  const distance = Math.hypot(dx, dz);
-  if (distance > move.range || Math.abs(b.y - a.y) > 2.1) return null;
-  const x = distance > .01 ? dx / distance : Math.sin(a.facing);
-  const z = distance > .01 ? dz / distance : Math.cos(a.facing);
-  if (x * Math.sin(a.facing) + z * Math.cos(a.facing) < Math.cos(move.arc)) return null;
-  return { attack: a.attack, move, x, z };
+  if (Math.abs(b.y - a.y) > 2.1) return null;
+  const { x, z, distance, forward } = directionTo(a, b);
+  const arc = Math.cos(move.arc);
+  if (forward < arc) return null;
+  const hit = { attack: a.attack, move, x, z, rewind: 0 };
+  if (distance <= move.range) return hit;
+
+  // An older pose can rescue a near miss, but never a clear escape, a
+  // ring-out, a respawn, or an opponent who was protected at either time.
+  if (!previous || previous.life !== b.life || previous.out || previous.invulnerable ||
+      previous.y < -38 || Math.abs(previous.y - a.y) > 2.1 ||
+      distance > move.range + MAX_REWIND_REACH) return null;
+  const old = directionTo(a, previous);
+  if (old.distance > move.range || old.forward < arc) return null;
+  hit.rewind = a.attackRewind;
+  return hit;
+}
+
+function previousTarget(duel, slot, rewind) {
+  if (!Number.isInteger(rewind) || rewind < 1 || rewind > MAX_REWIND_TICKS) return null;
+  const tick = duel.tick - rewind;
+  const frame = duel.history[tick % HISTORY_SIZE];
+  return frame?.tick === tick ? frame.fighters[slot] : null;
 }
 
 export function stepDuel(duel, inputs) {
@@ -183,9 +220,13 @@ export function stepDuel(duel, inputs) {
     } else stepFighter(f, inputs[slot], before[1 - slot]);
   }
 
-  // Determine both contacts from the same positions before mutating either fighter.
+  // Judge both contacts before applying either hit. Rewind the view of the
+  // target only, keeping the server's attack windows and knockback timeline.
   const [first, second] = duel.fighters;
-  const contacts = [contact(first, second), contact(second, first)];
+  const contacts = [
+    contact(first, second, previousTarget(duel, 1, first.attackRewind)),
+    contact(second, first, previousTarget(duel, 0, second.attackRewind)),
+  ];
   for (const [slot, hit] of contacts.entries()) {
     if (!hit) continue;
     const a = duel.fighters[slot], b = duel.fighters[1 - slot];
@@ -199,7 +240,7 @@ export function stepDuel(duel, inputs) {
     b.stun = move.stun;
     b.lock = Math.ceil(move.stun * .85);
     b.attack = null;
-    events.push({ type: 'hit', slot: 1 - slot, attack: hit.attack, x: b.x, y: b.y, z: b.z });
+    events.push({ type: 'hit', slot: 1 - slot, attack: hit.attack, rewind: hit.rewind, x: b.x, y: b.y, z: b.z });
   }
   for (const [slot, f] of duel.fighters.entries()) {
     if (f.out || !f.lives || (f.health > 0 && f.y >= -38)) continue;
@@ -208,6 +249,10 @@ export function stepDuel(duel, inputs) {
     f.attack = null;
     events.push({ type: f.health === 0 ? 'ko' : 'fall', slot, x: f.x, y: f.y, z: f.z });
   }
+  duel.history[duel.tick % HISTORY_SIZE] = {
+    tick: duel.tick,
+    fighters: duel.fighters.map(({ x, y, z, out, life, invulnerable }) => ({ x, y, z, out, life, invulnerable })),
+  };
   if (--duel.remaining === 0 || !first.lives || !second.lives) {
     const difference = first.lives - second.lives || (first.lives ? first.health - second.health : 0);
     duel.winner = difference === 0 ? null : Number(difference < 0);
