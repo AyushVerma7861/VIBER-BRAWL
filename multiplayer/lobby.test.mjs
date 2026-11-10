@@ -32,12 +32,11 @@ test('a waiting host can disconnect and resume on the original invite', { timeou
   const { type, code, resumeToken } = await request(host, { type: 'create' });
   assert.equal(type, 'joined');
   assert.ok(resumeToken);
-  const closed = once(host, 'close');
-  host.close();
-  await closed;
-
   const guest = await connect();
   const join = { type: 'join', code };
+  const closed = once(host, 'close');
+  host.send(JSON.stringify({ type: 'suspend' }));
+  await closed;
   assert.equal((await request(guest, join)).code, 'host_away');
 
   const restored = await connect();
@@ -46,7 +45,12 @@ test('a waiting host can disconnect and resume on the original invite', { timeou
   assert.equal(reply.type, 'joined');
   assert.equal(reply.code, code);
   assert.equal(reply.slot, 0);
-  const start = once(restored, 'message', { signal: AbortSignal.timeout(3000) });
+  // A proxy may leave the original socket open after a refresh.
+  const refreshed = await connect();
+  const replaced = once(restored, 'close', { signal: AbortSignal.timeout(3000) });
+  assert.equal((await request(refreshed, resume)).type, 'joined');
+  await replaced;
+  const start = once(refreshed, 'message', { signal: AbortSignal.timeout(3000) });
   const guestReply = await request(guest, join);
   assert.equal(guestReply.type, 'joined');
   assert.equal(guestReply.slot, 1);
@@ -56,7 +60,7 @@ test('a waiting host can disconnect and resume on the original invite', { timeou
   const third = await connect();
   assert.equal((await request(third, join)).code, 'room_full');
   const left = once(guest, 'close', { signal: AbortSignal.timeout(3000) });
-  restored.send(JSON.stringify({ type: 'leave' }));
+  refreshed.send(JSON.stringify({ type: 'leave' }));
   await left;
   assert.equal((await request(third, join)).code, 'invite_expired');
 });

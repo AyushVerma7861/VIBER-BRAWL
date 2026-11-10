@@ -171,10 +171,6 @@ export function mountOnline(arena) {
           setStatus('Waiting for your opponent to rematch.');
           break;
         case 'error':
-          if (resumeToken && message.code === 'host_connected') {
-            retryHost(message.reason);
-            break;
-          }
           if (resumeToken && message.code === 'resume_unavailable') rememberHost(null);
           if (message.code === 'host_away' && hostSession?.code === code) {
             reset('Select Resume hosting in this tab. Then open the invite on another device or in a second tab.');
@@ -217,6 +213,9 @@ export function mountOnline(arena) {
     send({ type: 'leave' });
     reset('You left the duel.');
   };
+  window.addEventListener('pagehide', () => {
+    if (slot === 0 && !latest) send({ type: 'suspend' });
+  });
   ui.rematch.onclick = () => {
     ui.rematch.disabled = true;
     send({ type: 'rematch' });

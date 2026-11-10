@@ -116,6 +116,12 @@ function roomIsExpired(room, now) {
     (room.expires <= now || (room.resumeUntil > 0 && room.resumeUntil <= now));
 }
 
+function detachHost(room, client) {
+  room.players[0] = null;
+  room.resumeUntil = Date.now() + reconnectMs;
+  client.room = null;
+}
+
 function enterRoom(client, code, resumeToken) {
   const room = rooms.get(code);
   if (room && roomIsExpired(room, Date.now())) {
@@ -124,9 +130,13 @@ function enterRoom(client, code, resumeToken) {
   if (resumeToken) {
     if (!rooms.has(code) || room.duel || room.resumeToken !== resumeToken) {
       send(client, { type: 'error', code: 'resume_unavailable', reason: 'This duel can no longer be resumed. Create a fresh invite.' });
-    } else if (room.players[0]) {
-      send(client, { type: 'error', code: 'host_connected', reason: 'The host is still connected. Keep the original host tab open.' });
     } else {
+      const previous = room.players[0];
+      if (previous) {
+        previous.room = null;
+        send(previous, { type: 'left', reason: 'Hosting resumed in another tab.' });
+        previous.close();
+      }
       room.resumeUntil = 0;
       attachPlayer(client, room, 0);
     }
@@ -229,11 +239,7 @@ sockets.on('connection', client => {
     const room = client.room;
     if (!room) return;
     if (room.duel) expireRoom(room, 'Your opponent left the room.');
-    else {
-      room.players[0] = null;
-      room.resumeUntil = Date.now() + reconnectMs;
-      client.room = null;
-    }
+    else detachHost(room, client);
   });
   client.on('message', (raw, binary) => {
     const now = performance.now();
@@ -260,6 +266,11 @@ sockets.on('connection', client => {
       return;
     }
     if (message.type === 'leave') { expireRoom(room, 'Your opponent left the room.'); return; }
+    if (message.type === 'suspend' && !room.duel && client.slot === 0) {
+      detachHost(room, client);
+      client.close();
+      return;
+    }
     if (message.type === 'input') acceptInput(client, message);
     if (message.type === 'rematch' && room.duel?.ended) {
       client.ready = true;
