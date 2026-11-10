@@ -3,6 +3,15 @@ import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, lerpAngle
 const positionKeys = ['x', 'y', 'z'];
 const invitation = new URL(location.href).searchParams.get('room') || '';
 const open = WebSocket.OPEN;
+const hostStorageKey = 'dungeon-duel-host';
+
+function readHostSession() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(hostStorageKey));
+    if (saved && ROOM_CODE.test(saved.code) && /^[A-Za-z0-9_-]{24}$/.test(saved.token)) return saved;
+  } catch {}
+  return null;
+}
 
 export function mountOnline(arena) {
   const css = document.createElement('link');
@@ -20,6 +29,7 @@ export function mountOnline(arena) {
       <p data-ui="status" role="status">A private 1v1. Three stocks each.</p>
       <div data-ui="entry">
         <button data-ui="create" type="button">Create duel</button>
+        <button data-ui="resume" type="button" hidden>Resume hosting</button>
         <form data-ui="join-form">
           <label for="duel-code">Room code or invite link</label>
           <div class="duel-row"><input id="duel-code" maxlength="220" autocomplete="off" autocapitalize="none" spellcheck="false" required><button type="submit">Join</button></div>
@@ -28,6 +38,7 @@ export function mountOnline(arena) {
       <div data-ui="invite" hidden>
         <label for="duel-link">Send this invite to a friend</label>
         <div class="duel-row"><input id="duel-link" readonly><button data-ui="copy" type="button">Copy</button></div>
+        <p class="duel-help">Keep this host tab open. Open the invite on another device or in a second tab.</p>
       </div>
       <button data-ui="rematch" type="button" hidden>Rematch</button>
       <p class="duel-help">Move with WASD or arrows. Space to jump, Shift to dash, J for quick hit and K for heavy hit. On a phone, play in landscape.</p>
@@ -46,7 +57,10 @@ export function mountOnline(arena) {
     ui.status.textContent = 'Invite ready. Select Join to enter.';
   }
 
-  let socket, pingTimer, connectTimer;
+  let socket, pingTimer, connectTimer, reconnectTimer;
+  let hostSession = readHostSession();
+  let reconnectUntil = 0;
+  ui.resume.hidden = !hostSession;
   let slot = -1;
   let round = 0;
   let latest, predicted, receivedAt;
@@ -60,9 +74,18 @@ export function mountOnline(arena) {
     if (socket?.readyState === open) socket.send(JSON.stringify(message));
   };
   const setStatus = message => { ui.status.textContent = message; };
+  function rememberHost(value) {
+    hostSession = value;
+    ui.resume.hidden = !value;
+    try {
+      if (value) sessionStorage.setItem(hostStorageKey, JSON.stringify(value));
+      else sessionStorage.removeItem(hostStorageKey);
+    } catch {}
+  }
   function reset(message) {
     clearInterval(pingTimer);
     clearTimeout(connectTimer);
+    clearTimeout(reconnectTimer);
     const previous = socket;
     socket = null;
     previous?.close();
@@ -78,9 +101,17 @@ export function mountOnline(arena) {
     arena.lobby();
   }
 
-  function connect(code) {
+  function retryHost(message) {
+    if (!hostSession || Date.now() >= reconnectUntil) { reset(message); return; }
+    reset('Reconnecting to your duel…');
+    ui.entry.hidden = true;
+    matchBar.hidden = false;
+    reconnectTimer = setTimeout(() => connect(hostSession.code, hostSession.token), 2000);
+  }
+
+  function connect(code, resumeToken) {
     if (socket) return;
-    setStatus('Connecting to the arena…');
+    setStatus(resumeToken ? 'Reconnecting to your duel…' : 'Connecting to the arena…');
     ui.entry.hidden = true;
     matchBar.hidden = false;
     ui.copy.textContent = 'Copy';
@@ -89,16 +120,23 @@ export function mountOnline(arena) {
     const url = new URL('/duel', location.href);
     url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const connection = socket = new WebSocket(url);
-    connectTimer = setTimeout(() => reset('Connection timed out. Try again in a moment.'), 70_000);
+    connectTimer = setTimeout(() => {
+      if (resumeToken) retryHost('Could not reconnect. Select Resume hosting to try again.');
+      else reset('Connection timed out. Try again in a moment.');
+    }, resumeToken ? 8000 : 70_000);
     connection.addEventListener('open', () => {
       if (socket !== connection) return;
-      send(code ? { type: 'join', code } : { type: 'create' });
+      send(resumeToken ? { type: 'resume', code, resumeToken } : code ? { type: 'join', code } : { type: 'create' });
       const ping = () => send({ type: 'ping', sent: performance.now() });
       ping();
       pingTimer = setInterval(ping, 2000);
     });
     connection.addEventListener('close', () => {
-      if (socket === connection) reset('Connection closed. Create or join a duel to try again.');
+      if (socket !== connection) return;
+      const wasHosting = slot === 0 && !latest && hostSession;
+      if (wasHosting) reconnectUntil = Date.now() + 120_000;
+      if (wasHosting || (resumeToken && slot < 0)) retryHost('Could not reconnect. Select Resume hosting to try again.');
+      else reset('Connection closed. Create or join a duel to try again.');
     });
     connection.addEventListener('message', event => {
       if (socket !== connection) return;
@@ -107,8 +145,12 @@ export function mountOnline(arena) {
         case 'joined': {
           clearTimeout(connectTimer);
           slot = message.slot;
+          reconnectUntil = 0;
+          if (slot === 0 && message.resumeToken) rememberHost({ code: message.code, token: message.resumeToken });
           const link = new URL(location.href);
+          link.pathname = '/online';
           link.search = '';
+          link.hash = '';
           link.searchParams.set('room', message.code);
           linkField.value = link.href;
           ui.invite.hidden = slot !== 0;
@@ -129,7 +171,19 @@ export function mountOnline(arena) {
           setStatus('Waiting for your opponent to rematch.');
           break;
         case 'error':
+          if (resumeToken && message.code === 'host_connected') {
+            retryHost(message.reason);
+            break;
+          }
+          if (resumeToken && message.code === 'resume_unavailable') rememberHost(null);
+          if (message.code === 'host_away' && hostSession?.code === code) {
+            reset('Select Resume hosting in this tab. Then open the invite on another device or in a second tab.');
+            break;
+          }
+          reset(message.reason);
+          break;
         case 'left':
+          if (slot === 0) rememberHost(null);
           reset(message.reason);
           break;
       }
@@ -137,6 +191,11 @@ export function mountOnline(arena) {
   }
 
   ui.create.onclick = () => connect(null);
+  ui.resume.onclick = () => {
+    if (!hostSession) return;
+    reconnectUntil = Date.now() + 15_000;
+    connect(hostSession.code, hostSession.token);
+  };
   ui['join-form'].onsubmit = event => {
     event.preventDefault();
     let code = codeField.value.trim();
@@ -152,13 +211,19 @@ export function mountOnline(arena) {
       linkField.select();
     }
   };
-  ui.leave.onclick = () => reset('You left the duel.');
+  ui.leave.onclick = () => {
+    if (slot === 0 || reconnectUntil) rememberHost(null);
+    reconnectUntil = 0;
+    send({ type: 'leave' });
+    reset('You left the duel.');
+  };
   ui.rematch.onclick = () => {
     ui.rematch.disabled = true;
     send({ type: 'rematch' });
   };
 
   function start(message) {
+    if (slot === 0) rememberHost(null);
     round = message.round;
     seq = 0;
     accumulator = 0;

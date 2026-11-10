@@ -1,6 +1,6 @@
 # Dungeon Duel alpha
 
-Private 1v1 in VIBER BRAWL’s Dungeon. Create a duel and send the invite link. The friend opens it and selects Join. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
+Private 1v1 in VIBER BRAWL’s Dungeon. Create a duel, keep the host tab open, and send the invite link. The friend opens it and selects Join. To test alone, open the invite in a second tab. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
 
 ## Run
 
@@ -26,7 +26,7 @@ Open http://127.0.0.1:8788/online in two browser windows. For two devices on the
 | Arena rules | No passive body push, specials, hazards or powerups in this alpha. Direct attack knockback still applies. Respawns choose the more distant of two starts and grant up to 1.2 seconds of protection, ending early if the fighter swings. |
 | Latency | Local movement, dash, jump and swing use prediction with replay after each server update. Remote fighters are interpolated from 20 Hz snapshots with a jitter buffer. A melee swing first checks current positions. On a near miss, it can check the opponent’s older position using server-measured latency and the client’s rendered tick. The lookback is capped at 150 ms. The opponent must still be inside the swing arc and no more than one unit beyond normal reach. |
 
-A disconnect closes the invite room. This version keeps the room and scores in memory and caps the host at eight rooms. It has no ranking or public queue.
+If the host disconnects while waiting, they can resume on the same invite for up to two minutes. The host page tries to reconnect and offers Resume hosting if it was refreshed. A disconnect after a match starts or choosing Leave closes the room. Waiting rooms expire after ten minutes. This version keeps rooms and scores in memory and caps the server at eight rooms. It has no ranking or public queue.
 
 ## Host for ₹0
 

@@ -11,6 +11,8 @@ const snapshotEvery = 3;
 const baseViewTicks = 6;
 const maxViewAge = 18;
 const waitingMs = 10 * 60_000;
+const reconnectMs = 2 * 60_000;
+const resumeTokenPattern = /^[A-Za-z0-9_-]{24}$/;
 const rooms = new Map();
 
 const assets = new Map([
@@ -78,32 +80,67 @@ function send(client, message) {
 function expireRoom(room, reason) {
   if (!rooms.delete(room.code)) return;
   for (const client of room.players) {
+    if (!client) continue;
     client.room = null;
     send(client, { type: 'left', reason });
     client.close();
   }
 }
 
-function enterRoom(client, code) {
-  let room;
-  if (!code) {
-    if (rooms.size >= maxRooms) { send(client, { type: 'error', reason: 'All duel rooms are in use. Try again shortly.' }); return; }
-    do { code = randomBytes(9).toString('base64url'); } while (rooms.has(code));
-    room = { code, players: [], duel: null, events: [], round: 0, expires: Date.now() + waitingMs };
-    rooms.set(code, room);
-  } else {
-    room = rooms.get(code);
-    if (!room || room.players.length !== 1 || room.players[0].readyState !== WebSocket.OPEN) {
-      send(client, { type: 'error', reason: 'This invite is expired or the room is full.' });
-      return;
-    }
-  }
-  client.slot = room.players.length;
+function attachPlayer(client, room, slot) {
+  client.slot = slot;
   client.room = room;
   client.ready = false;
-  room.players.push(client);
-  send(client, { type: 'joined', code, slot: client.slot });
-  if (room.players.length === 2) startRound(room);
+  room.players[slot] = client;
+  send(client, {
+    type: 'joined', code: room.code, slot,
+    ...(slot === 0 ? { resumeToken: room.resumeToken } : {}),
+  });
+  if (slot === 1) startRound(room);
+}
+
+function createRoom(client) {
+  if (rooms.size >= maxRooms) { send(client, { type: 'error', reason: 'All duel rooms are in use. Try again shortly.' }); return; }
+  let code;
+  do { code = randomBytes(9).toString('base64url'); } while (rooms.has(code));
+  const room = {
+    code, resumeToken: randomBytes(18).toString('base64url'), players: [],
+    duel: null, events: [], round: 0, expires: Date.now() + waitingMs, resumeUntil: 0,
+  };
+  rooms.set(code, room);
+  attachPlayer(client, room, 0);
+}
+
+function roomIsExpired(room, now) {
+  return (!room.duel || room.duel.ended) &&
+    (room.expires <= now || (room.resumeUntil > 0 && room.resumeUntil <= now));
+}
+
+function enterRoom(client, code, resumeToken) {
+  const room = rooms.get(code);
+  if (room && roomIsExpired(room, Date.now())) {
+    expireRoom(room, 'This room expired. Create a new invite to play again.');
+  }
+  if (resumeToken) {
+    if (!rooms.has(code) || room.duel || room.resumeToken !== resumeToken) {
+      send(client, { type: 'error', code: 'resume_unavailable', reason: 'This duel can no longer be resumed. Create a fresh invite.' });
+    } else if (room.players[0]) {
+      send(client, { type: 'error', code: 'host_connected', reason: 'The host is still connected. Keep the original host tab open.' });
+    } else {
+      room.resumeUntil = 0;
+      attachPlayer(client, room, 0);
+    }
+    return;
+  }
+  if (!rooms.has(code)) {
+    send(client, { type: 'error', code: 'invite_expired', reason: 'This invite is no longer active. Ask the host to create and send a new one.' });
+  } else if (room.players.length === 2) {
+    send(client, { type: 'error', code: 'room_full', reason: 'This duel already has two players. Ask the host for a new duel.' });
+  } else if (room.players[0]?.readyState !== WebSocket.OPEN) {
+    send(client, { type: 'error', code: 'host_away', reason: 'The host disconnected. Ask them to return to their host tab, then select Join again.' });
+  } else {
+    attachPlayer(client, room, 1);
+  }
 }
 
 function startRound(room) {
@@ -189,7 +226,14 @@ sockets.on('connection', client => {
   client.on('error', () => client.terminate());
   client.on('close', () => {
     clearTimeout(joinTimeout);
-    if (client.room) expireRoom(client.room, 'Your opponent left the room.');
+    const room = client.room;
+    if (!room) return;
+    if (room.duel) expireRoom(room, 'Your opponent left the room.');
+    else {
+      room.players[0] = null;
+      room.resumeUntil = Date.now() + reconnectMs;
+      client.room = null;
+    }
   });
   client.on('message', (raw, binary) => {
     const now = performance.now();
@@ -205,11 +249,17 @@ sockets.on('connection', client => {
     }
     const room = client.room;
     if (!room) {
-      if (message.type === 'create') enterRoom(client, null);
-      if (message.type === 'join' && typeof message.code === 'string' && ROOM_CODE.test(message.code)) enterRoom(client, message.code);
+      if (message.type === 'create') createRoom(client);
+      if (typeof message.code === 'string' && ROOM_CODE.test(message.code)) {
+        if (message.type === 'join') enterRoom(client, message.code);
+        if (message.type === 'resume' && typeof message.resumeToken === 'string' && resumeTokenPattern.test(message.resumeToken)) {
+          enterRoom(client, message.code, message.resumeToken);
+        }
+      }
       if (client.room) { clearTimeout(joinTimeout); joinTimeout = null; }
       return;
     }
+    if (message.type === 'leave') { expireRoom(room, 'Your opponent left the room.'); return; }
     if (message.type === 'input') acceptInput(client, message);
     if (message.type === 'rematch' && room.duel?.ended) {
       client.ready = true;
@@ -241,7 +291,7 @@ setInterval(() => {
 setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    if ((!room.duel || room.duel.ended) && room.expires <= now) expireRoom(room, 'This room expired. Create a new invite to play again.');
+    if (roomIsExpired(room, now)) expireRoom(room, 'This room expired. Create a new invite to play again.');
   }
   for (const client of sockets.clients) {
     if (now - client.pongAt > 30_000) client.terminate();
