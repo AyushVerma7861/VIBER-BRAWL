@@ -4,6 +4,7 @@ import { on, once } from 'node:events';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
 import WebSocket from 'ws';
+import { unpackFighter } from '../public/online-net.mjs';
 
 test('the invite survives a host refresh and both seats can resume a paused duel', { timeout: 20_000 }, async t => {
   const server = spawn(process.execPath, ['multiplayer/server.mjs'], {
@@ -30,6 +31,7 @@ test('the invite survives a host refresh and both seats can resume a paused duel
   async function waitFor(socket, condition) {
     for await (const [raw] of on(socket, 'message', { signal: AbortSignal.timeout(5000) })) {
       const message = JSON.parse(raw);
+      if (message.compact) message.fighters = message.fighters.map(unpackFighter);
       if (condition(message)) return message;
     }
   }
@@ -74,7 +76,7 @@ test('the invite survives a host refresh and both seats can resume a paused duel
 
   const replacement = await connect();
   const bothResumed = waitFor(refreshed, m => m.type === 'resumed');
-  const joined = await request(replacement, { type: 'resume', code, resumeToken: guestReply.resumeToken });
+  const joined = await request(replacement, { type: 'resume', code, resumeToken: guestReply.resumeToken, compactSnapshots: true });
   assert.equal(joined.slot, 1);
   assert.equal(joined.inMatch, true);
   const resumed = await bothResumed;
@@ -86,6 +88,7 @@ test('the invite survives a host refresh and both seats can resume a paused duel
   assert.ok(resumed.countdown > 0);
 
   const ready = await waitFor(replacement, m => m.type === 'state' && m.countdown === 0);
+  assert.equal(ready.compact, true);
   const jump = waitFor(refreshed, m => m.type === 'state' && m.fighters[1].y > 0.2);
   replacement.send(JSON.stringify({ type: 'input', round: ready.round, epoch: ready.epoch, frames: [[1, 0, 0, 1], [2, 0, 0, 0]] }));
   await jump;

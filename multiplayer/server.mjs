@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createDuel, HEAVY, MAX_REWIND_TICKS, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
+import { packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const maxRooms = 8;
-const snapshotEvery = 3;
 const baseViewTicks = 6;
 const maxViewAge = 18;
 const waitingMs = 10 * 60_000;
@@ -21,6 +21,7 @@ const assets = new Map([
   ['/three.min.js', ['three.min.js', 'text/javascript; charset=utf-8']],
   ['/online-client.mjs', ['online-client.mjs', 'text/javascript; charset=utf-8']],
   ['/online-sim.mjs', ['online-sim.mjs', 'text/javascript; charset=utf-8']],
+  ['/online-net.mjs', ['online-net.mjs', 'text/javascript; charset=utf-8']],
   ['/online.css', ['online.css', 'text/css; charset=utf-8']],
   ['/halloween-menu.css', ['halloween-menu.css', 'text/css; charset=utf-8']],
   ['/guide-poster.jpg', ['guide-poster.jpg', 'image/jpeg']],
@@ -205,10 +206,15 @@ function startRound(room) {
 
 function broadcast(room, type) {
   const { history, ...snapshot } = room.duel;
+  let compactFighters;
   for (const client of room.players) {
     if (!client) continue;
+    if (type === 'state' && !snapshot.ended && !room.events.length &&
+        client.bufferedAmount > 4096 && client.bufferedAmount <= 32_768) continue;
+    if (client.compactSnapshots) compactFighters ??= snapshot.fighters.map(packFighter);
     send(client, {
       type, round: room.round, epoch: room.epoch, ...snapshot,
+      ...(client.compactSnapshots ? { compact: true, fighters: compactFighters } : {}),
       ack: client.ack, events: room.events,
     });
   }
@@ -301,6 +307,7 @@ sockets.on('connection', client => {
     }
     const room = client.room;
     if (!room) {
+      client.compactSnapshots = message.compactSnapshots === true;
       if (message.type === 'create') createRoom(client);
       if (typeof message.code === 'string' && ROOM_CODE.test(message.code)) {
         if (message.type === 'join') enterRoom(client, message.code);
@@ -331,6 +338,7 @@ sockets.on('connection', client => {
 let nextTick = performance.now();
 setInterval(() => {
   const now = performance.now();
+  const ready = new Set();
   let ticks = 0;
   while (now >= nextTick && ticks++ < 4) {
     nextTick += STEP * 1000;
@@ -340,9 +348,10 @@ setInterval(() => {
       const inputs = duel.countdown ? [NONE, NONE] : room.players.map(player => nextInput(player, duel.tick));
       room.events.push(...stepDuel(duel, inputs));
       if (duel.ended) room.expires = Date.now() + waitingMs;
-      if (duel.ended || duel.tick % snapshotEvery === 0) broadcast(room, 'state');
+      if (duel.ended || duel.tick % SNAPSHOT_EVERY === 0) ready.add(room);
     }
   }
+  for (const room of ready) broadcast(room, 'state');
   if (now - nextTick > 100) nextTick = now + STEP * 1000;
 }, 8).unref();
 

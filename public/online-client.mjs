@@ -1,7 +1,7 @@
 import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, lerpAngle, stepFighter } from './online-sim.mjs';
+import { OpponentClock, unpackFighter } from './online-net.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
-const maxExtrapolationTicks = 4;
 const invitation = new URL(location.href).searchParams.get('room') || '';
 const open = WebSocket.OPEN;
 const hostStorageKey = 'dungeon-duel-host';
@@ -67,7 +67,8 @@ export function mountOnline(arena) {
   let slot = -1;
   let round = 0, epoch = 0;
   let latest, predicted, receivedAt;
-  let seq = 0, accumulator = 0, renderTick = 0, spread = 0;
+  let seq = 0, accumulator = 0, renderTick = 0;
+  let opponentClock = new OpponentClock();
   let pending = [], unsent = [], snapshots = [];
   let offset = [0, 0, 0];
   let banner = '', lastRemote = null, guessedRemote = false;
@@ -160,7 +161,8 @@ export function mountOnline(arena) {
     }, resumeToken ? 8000 : 70_000);
     connection.addEventListener('open', () => {
       if (socket !== connection) return;
-      send(resumeToken ? { type: 'resume', code, resumeToken } : code ? { type: 'join', code } : { type: 'create' });
+      const request = resumeToken ? { type: 'resume', code, resumeToken } : code ? { type: 'join', code } : { type: 'create' };
+      send({ ...request, compactSnapshots: true });
       const ping = () => send({ type: 'ping', sent: performance.now() });
       ping();
       pingTimer = setInterval(ping, 2000);
@@ -172,6 +174,7 @@ export function mountOnline(arena) {
     connection.addEventListener('message', event => {
       if (socket !== connection) return;
       const message = JSON.parse(event.data);
+      if (message.compact) message.fighters = message.fighters.map(unpackFighter);
       lastServerAt = performance.now();
       switch (message.type) {
         case 'joined': {
@@ -272,7 +275,7 @@ export function mountOnline(arena) {
     epoch = message.epoch ?? 0;
     seq = 0;
     accumulator = 0;
-    spread = 0;
+    opponentClock = new OpponentClock();
     renderTick = message.tick;
     pending = [];
     unsent = [];
@@ -294,10 +297,7 @@ export function mountOnline(arena) {
   function receive(message) {
     if (message.round !== round || latest && message.tick <= latest.tick) return;
     const now = performance.now();
-    if (latest) {
-      const error = Math.abs(now - receivedAt - (message.tick - latest.tick) * STEP * 1000);
-      spread += (Math.min(100, error) - spread) * .12;
-    }
+    opponentClock.sample(message.tick, now);
     const prior = predicted;
     const confirmed = message.fighters[slot];
     receivedAt = now;
@@ -328,9 +328,7 @@ export function mountOnline(arena) {
   }
 
   function opponentAt(now) {
-    const buffer = (100 + Math.min(80, spread * 2)) / (STEP * 1000);
-    const target = Math.min(latest.tick + maxExtrapolationTicks, latest.tick + (now - receivedAt) / (STEP * 1000) - buffer);
-    renderTick = Math.max(renderTick, target);
+    renderTick = opponentClock.advance(now);
     while (snapshots.length > 2 && snapshots[1].tick <= renderTick) snapshots.shift();
     const old = snapshots[0], next = snapshots[1];
     const previous = old.fighters[1 - slot];
