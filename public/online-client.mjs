@@ -1,11 +1,12 @@
 import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, lerpAngle, stepFighter } from './online-sim.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
+const maxExtrapolationTicks = 4;
 const invitation = new URL(location.href).searchParams.get('room') || '';
 const open = WebSocket.OPEN;
 const hostStorageKey = 'dungeon-duel-host';
 
-function readHostSession() {
+function readSeat() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(hostStorageKey));
     if (saved && ROOM_CODE.test(saved.code) && /^[A-Za-z0-9_-]{24}$/.test(saved.token)) return saved;
@@ -58,37 +59,47 @@ export function mountOnline(arena) {
   }
 
   let socket, pingTimer, connectTimer, reconnectTimer;
-  let hostSession = readHostSession();
-  let reconnectUntil = 0;
-  ui.resume.hidden = !hostSession;
+  let seat = readSeat();
+  let reconnectUntil = 0, retryDelay = 500, lastServerAt = 0;
+  let paused = false;
+  ui.resume.hidden = !seat;
+  ui.resume.textContent = seat?.inMatch ? 'Resume duel' : 'Resume hosting';
   let slot = -1;
-  let round = 0;
+  let round = 0, epoch = 0;
   let latest, predicted, receivedAt;
   let seq = 0, accumulator = 0, renderTick = 0, spread = 0;
   let pending = [], unsent = [], snapshots = [];
   let offset = [0, 0, 0];
-  let banner = '';
+  let banner = '', lastRemote = null, guessedRemote = false;
+  let remoteOffset = [0, 0, 0];
   let rtt = NaN;
+  let pingSamples = [];
 
   const send = message => {
     if (socket?.readyState === open) socket.send(JSON.stringify(message));
   };
   const setStatus = message => { ui.status.textContent = message; };
-  function rememberHost(value) {
-    hostSession = value;
+  function rememberSeat(value) {
+    seat = value;
     ui.resume.hidden = !value;
+    ui.resume.textContent = value?.inMatch ? 'Resume duel' : 'Resume hosting';
     try {
       if (value) sessionStorage.setItem(hostStorageKey, JSON.stringify(value));
       else sessionStorage.removeItem(hostStorageKey);
     } catch {}
   }
-  function reset(message) {
+  function closeConnection() {
     clearInterval(pingTimer);
     clearTimeout(connectTimer);
     clearTimeout(reconnectTimer);
     const previous = socket;
     socket = null;
     previous?.close();
+  }
+  function reset(message) {
+    closeConnection();
+    reconnectUntil = 0;
+    paused = false;
     latest = null;
     slot = -1;
     round = 0;
@@ -101,12 +112,34 @@ export function mountOnline(arena) {
     arena.lobby();
   }
 
-  function retryHost(message) {
-    if (!hostSession || Date.now() >= reconnectUntil) { reset(message); return; }
-    reset('Reconnecting to your duel…');
-    ui.entry.hidden = true;
-    matchBar.hidden = false;
-    reconnectTimer = setTimeout(() => connect(hostSession.code, hostSession.token), 2000);
+  function retrySeat() {
+    if (!seat || Date.now() >= reconnectUntil) {
+      if (seat?.inMatch) rememberSeat(null);
+      reset('Could not reconnect to the duel. Try again with a new invite.');
+      return;
+    }
+    closeConnection();
+    if (latest) {
+      paused = true;
+      arena.release();
+      ui.ping.textContent = 'Reconnecting…';
+    } else {
+      setStatus('Reconnecting to your duel…');
+    }
+    reconnectTimer = setTimeout(() => connect(seat.code, seat.token), retryDelay);
+    retryDelay = Math.min(4000, retryDelay * 2);
+  }
+
+  function connectionLost(resumeToken) {
+    if (seat && ((slot >= 0 && !latest?.ended) || resumeToken)) {
+      if (!reconnectUntil) {
+        reconnectUntil = Date.now() + (seat.inMatch ? 20_000 : 120_000);
+        retryDelay = 500;
+      }
+      retrySeat();
+    } else {
+      reset('Connection closed. Create or join a duel to try again.');
+    }
   }
 
   function connect(code, resumeToken) {
@@ -115,13 +148,14 @@ export function mountOnline(arena) {
     ui.entry.hidden = true;
     matchBar.hidden = false;
     ui.copy.textContent = 'Copy';
-    ui.ping.textContent = '';
+    if (!latest) ui.ping.textContent = '';
     rtt = NaN;
+    pingSamples = [];
     const url = new URL('/duel', location.href);
     url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const connection = socket = new WebSocket(url);
     connectTimer = setTimeout(() => {
-      if (resumeToken) retryHost('Could not reconnect. Select Resume hosting to try again.');
+      if (resumeToken) retrySeat();
       else reset('Connection timed out. Try again in a moment.');
     }, resumeToken ? 8000 : 70_000);
     connection.addEventListener('open', () => {
@@ -133,20 +167,19 @@ export function mountOnline(arena) {
     });
     connection.addEventListener('close', () => {
       if (socket !== connection) return;
-      const wasHosting = slot === 0 && !latest && hostSession;
-      if (wasHosting) reconnectUntil = Date.now() + 120_000;
-      if (wasHosting || (resumeToken && slot < 0)) retryHost('Could not reconnect. Select Resume hosting to try again.');
-      else reset('Connection closed. Create or join a duel to try again.');
+      connectionLost(resumeToken);
     });
     connection.addEventListener('message', event => {
       if (socket !== connection) return;
       const message = JSON.parse(event.data);
+      lastServerAt = performance.now();
       switch (message.type) {
         case 'joined': {
           clearTimeout(connectTimer);
           slot = message.slot;
           reconnectUntil = 0;
-          if (slot === 0 && message.resumeToken) rememberHost({ code: message.code, token: message.resumeToken });
+          if (message.resumeToken) rememberSeat({ code: message.code, token: message.resumeToken, inMatch: message.inMatch });
+          if (message.inMatch) break;
           const link = new URL(location.href);
           link.pathname = '/online';
           link.search = '';
@@ -160,26 +193,35 @@ export function mountOnline(arena) {
         case 'start':
           start(message);
           break;
+        case 'paused':
+        case 'resumed':
+          start(message, message.type === 'paused');
+          break;
         case 'state':
           receive(message);
           break;
-        case 'pong':
-          rtt = performance.now() - message.sent;
-          ui.ping.textContent = Math.round(rtt) + ' ms';
+        case 'pong': {
+          pingSamples.push(Math.round(lastServerAt - message.sent));
+          if (pingSamples.length > 5) pingSamples.shift();
+          const sorted = [...pingSamples].sort((a, b) => a - b);
+          const middle = Math.floor(sorted.length / 2);
+          rtt = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+          if (!latest) ui.ping.textContent = Math.round(rtt) + ' ms';
           break;
+        }
         case 'ready':
           setStatus('Waiting for your opponent to rematch.');
           break;
         case 'error':
-          if (resumeToken && message.code === 'resume_unavailable') rememberHost(null);
-          if (message.code === 'host_away' && hostSession?.code === code) {
+          if (resumeToken && message.code === 'resume_unavailable') rememberSeat(null);
+          if (message.code === 'host_away' && seat?.code === code) {
             reset('Select Resume hosting in this tab. Then open the invite on another device or in a second tab.');
             break;
           }
           reset(message.reason);
           break;
         case 'left':
-          if (slot === 0) rememberHost(null);
+          rememberSeat(null);
           reset(message.reason);
           break;
       }
@@ -188,9 +230,10 @@ export function mountOnline(arena) {
 
   ui.create.onclick = () => connect(null);
   ui.resume.onclick = () => {
-    if (!hostSession) return;
+    if (!seat) return;
     reconnectUntil = Date.now() + 15_000;
-    connect(hostSession.code, hostSession.token);
+    retryDelay = 500;
+    connect(seat.code, seat.token);
   };
   ui['join-form'].onsubmit = event => {
     event.preventDefault();
@@ -208,22 +251,25 @@ export function mountOnline(arena) {
     }
   };
   ui.leave.onclick = () => {
-    if (slot === 0 || reconnectUntil) rememberHost(null);
+    if (slot >= 0 || reconnectUntil) rememberSeat(null);
     reconnectUntil = 0;
     send({ type: 'leave' });
     reset('You left the duel.');
   };
   window.addEventListener('pagehide', () => {
-    if (slot === 0 && !latest) send({ type: 'suspend' });
+    if (seat && !latest?.ended) send({ type: 'suspend' });
   });
   ui.rematch.onclick = () => {
     ui.rematch.disabled = true;
     send({ type: 'rematch' });
   };
 
-  function start(message) {
-    if (slot === 0) rememberHost(null);
+  function start(message, isPaused = false) {
+    const newRound = !latest || round !== message.round;
+    if (seat && !seat.inMatch) rememberSeat({ ...seat, inMatch: true });
+    paused = isPaused;
     round = message.round;
+    epoch = message.epoch ?? 0;
     seq = 0;
     accumulator = 0;
     spread = 0;
@@ -232,12 +278,16 @@ export function mountOnline(arena) {
     unsent = [];
     snapshots = [];
     offset = [0, 0, 0];
+    remoteOffset = [0, 0, 0];
+    lastRemote = null;
+    guessedRemote = false;
     banner = '';
     latest = null;
     predicted = null;
     panel.hidden = true;
     matchBar.hidden = false;
-    arena.start(slot);
+    if (newRound) arena.start(slot);
+    arena.release();
     receive(message);
   }
 
@@ -254,7 +304,7 @@ export function mountOnline(arena) {
     latest = message;
     pending = pending.filter(input => input.seq > message.ack);
     predicted = { ...confirmed };
-    if (!message.countdown && !message.ended) {
+    if (!paused && !message.countdown && !message.ended) {
       for (const input of pending) stepFighter(predicted, input, message.fighters[1 - slot]);
     }
     if (!prior || prior.life !== predicted.life || predicted.out || Math.hypot(
@@ -279,13 +329,18 @@ export function mountOnline(arena) {
 
   function opponentAt(now) {
     const buffer = (100 + Math.min(80, spread * 2)) / (STEP * 1000);
-    const target = Math.min(latest.tick, latest.tick + (now - receivedAt) / (STEP * 1000) - buffer);
+    const target = Math.min(latest.tick + maxExtrapolationTicks, latest.tick + (now - receivedAt) / (STEP * 1000) - buffer);
     renderTick = Math.max(renderTick, target);
     while (snapshots.length > 2 && snapshots[1].tick <= renderTick) snapshots.shift();
     const old = snapshots[0], next = snapshots[1];
     const previous = old.fighters[1 - slot];
     if (!next || renderTick <= old.tick) return previous;
     const following = next.fighters[1 - slot];
+    if (renderTick > next.tick && !following.out && !next.countdown) {
+      const dt = (renderTick - next.tick) * STEP;
+      return { ...following, x: following.x + following.vx * dt, z: following.z + following.vz * dt,
+        y: following.grounded ? following.y : following.y + following.vy * dt };
+    }
     const alpha = Math.min(1, (renderTick - old.tick) / (next.tick - old.tick));
     if (previous.life !== following.life || Boolean(previous.out) !== Boolean(following.out)) {
       return alpha < 1 ? previous : following;
@@ -304,7 +359,11 @@ export function mountOnline(arena) {
     const dt = Math.min(.05, elapsed);
     if (!latest) { arena.draw(dt); return; }
     const stale = now - receivedAt > 450;
-    const canPlay = !latest.countdown && !latest.ended && !stale && !document.hidden;
+    if (!latest.ended && socket?.readyState === open && now - lastServerAt > 5000) {
+      connectionLost();
+      if (!latest) { arena.draw(dt); return; }
+    }
+    const canPlay = !paused && !latest.countdown && !latest.ended && !stale && !document.hidden;
     if (canPlay) {
       accumulator += Math.min(.1, elapsed);
       while (accumulator >= STEP && pending.length < 36) {
@@ -312,11 +371,11 @@ export function mountOnline(arena) {
         const input = { seq: ++seq, ...arena.input() };
         pending.push(input);
         const frame = [input.seq, input.x, input.z, input.buttons];
-        if (input.buttons & (QUICK | HEAVY)) frame.push(Math.floor(renderTick));
+        if (input.buttons & (QUICK | HEAVY)) frame.push(Math.floor(Math.min(renderTick, latest.tick)));
         unsent.push(frame);
         arena.action(stepFighter(predicted, input, latest.fighters[1 - slot]));
         if (unsent.length === 2) {
-          send({ type: 'input', round, frames: unsent });
+          send({ type: 'input', round, epoch, frames: unsent });
           unsent = [];
         }
       }
@@ -325,8 +384,9 @@ export function mountOnline(arena) {
       accumulator = 0;
       arena.release();
     }
-    if (!latest.ended && !latest.countdown) ui.ping.textContent = stale ? 'Connection stalled' : Number.isFinite(rtt) ? Math.round(rtt) + ' ms' : '';
-    const nextBanner = latest.countdown ? String(Math.ceil(latest.countdown / TICK_RATE)) : 'FIGHT!';
+    if (!latest.ended) ui.ping.textContent = paused ? (reconnectUntil ? 'Reconnecting…' : 'Waiting for opponent…')
+      : stale ? 'Connection stalled' : Number.isFinite(rtt) ? Math.round(rtt) + ' ms' : '';
+    const nextBanner = paused ? 'Connection paused' : latest.countdown ? String(Math.ceil(latest.countdown / TICK_RATE)) : 'FIGHT!';
     if (nextBanner !== banner) { banner = nextBanner; arena.announce(banner); }
     const local = { ...predicted };
     offset = offset.map((value, index) => {
@@ -334,7 +394,19 @@ export function mountOnline(arena) {
       return value * Math.exp(-17 * dt);
     });
     const confirmedRemote = latest.fighters[1 - slot];
-    const remote = latest.ended ? confirmedRemote : { ...opponentAt(now), health: confirmedRemote.health, lives: confirmedRemote.lives };
+    const remote = { ...(latest.ended || paused ? confirmedRemote : opponentAt(now)),
+      health: confirmedRemote.health, lives: confirmedRemote.lives };
+    const guessing = !paused && !latest.ended && !latest.countdown && renderTick > latest.tick;
+    if (!lastRemote || remote.life !== lastRemote.life || remote.out || paused) remoteOffset = [0, 0, 0];
+    else if (guessedRemote && !guessing) {
+      remoteOffset = positionKeys.map(key => Math.max(-1.5, Math.min(1.5, lastRemote[key] - remote[key])));
+    }
+    remoteOffset = remoteOffset.map((value, index) => {
+      remote[positionKeys[index]] += value;
+      return value * Math.exp(-18 * dt);
+    });
+    lastRemote = remote;
+    guessedRemote = guessing;
     const poses = slot === 0 ? [local, remote] : [remote, local];
     arena.draw(dt, poses, latest.remaining / TICK_RATE);
   };

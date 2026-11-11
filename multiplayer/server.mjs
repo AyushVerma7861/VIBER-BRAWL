@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createDuel, HEAVY, MAX_REWIND_TICKS, NONE, QUICK, ROOM_CODE, STEP, stepDuel } from '../public/online-sim.mjs';
+import { createDuel, HEAVY, MAX_REWIND_TICKS, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
@@ -12,6 +12,7 @@ const baseViewTicks = 6;
 const maxViewAge = 18;
 const waitingMs = 10 * 60_000;
 const reconnectMs = 2 * 60_000;
+const matchReconnectMs = 20_000;
 const resumeTokenPattern = /^[A-Za-z0-9_-]{24}$/;
 const rooms = new Map();
 
@@ -73,8 +74,13 @@ server.on('upgrade', (request, socket, head) => {
 
 function send(client, message) {
   if (client.readyState !== WebSocket.OPEN) return;
-  if (client.bufferedAmount > 32_768) { client.terminate(); return; }
+  if (client.bufferedAmount > 32_768) { drop(client, 'send backlog'); return; }
   client.send(JSON.stringify(message));
+}
+
+function drop(client, reason) {
+  client.disconnectReason = reason;
+  client.terminate();
 }
 
 function expireRoom(room, reason) {
@@ -94,9 +100,8 @@ function attachPlayer(client, room, slot) {
   room.players[slot] = client;
   send(client, {
     type: 'joined', code: room.code, slot,
-    ...(slot === 0 ? { resumeToken: room.resumeToken } : {}),
+    resumeToken: room.tokens[slot], inMatch: Boolean(room.duel && !room.duel.ended),
   });
-  if (slot === 1) startRound(room);
 }
 
 function createRoom(client) {
@@ -104,16 +109,16 @@ function createRoom(client) {
   let code;
   do { code = randomBytes(9).toString('base64url'); } while (rooms.has(code));
   const room = {
-    code, resumeToken: randomBytes(18).toString('base64url'), players: [],
-    duel: null, events: [], round: 0, expires: Date.now() + waitingMs, resumeUntil: 0,
+    code, tokens: Array.from({ length: 2 }, () => randomBytes(18).toString('base64url')), players: [],
+    duel: null, events: [], round: 0, epoch: 0, expires: Date.now() + waitingMs, resumeUntil: 0,
   };
   rooms.set(code, room);
   attachPlayer(client, room, 0);
 }
 
 function roomIsExpired(room, now) {
-  return (!room.duel || room.duel.ended) &&
-    (room.expires <= now || (room.resumeUntil > 0 && room.resumeUntil <= now));
+  return (room.resumeUntil > 0 && room.resumeUntil <= now) ||
+    ((!room.duel || room.duel.ended) && room.expires <= now);
 }
 
 function detachHost(room, client) {
@@ -122,23 +127,55 @@ function detachHost(room, client) {
   client.room = null;
 }
 
+function pauseForDisconnect(room, client) {
+  room.players[client.slot] = null;
+  client.room = null;
+  room.resumeUntil ||= Date.now() + matchReconnectMs;
+  broadcast(room, 'paused');
+}
+
+function resetInputs(client) {
+  client.queue = [];
+  client.ack = 0;
+  client.lastSeq = 0;
+  client.lastInput = NONE;
+  client.lastInputTick = -Infinity;
+}
+
+function resumePlayer(client, room, slot) {
+  const previous = room.players[slot];
+  if (previous) {
+    previous.room = null;
+    send(previous, { type: 'left', reason: 'Your seat resumed in another tab.' });
+    previous.close();
+  }
+  resetInputs(client);
+  attachPlayer(client, room, slot);
+  if (!room.duel) {
+    room.resumeUntil = 0;
+  } else if (room.players.every(player => player?.readyState === WebSocket.OPEN)) {
+    room.resumeUntil = 0;
+    room.epoch++;
+    room.duel.countdown = Math.max(room.duel.countdown, 2 * TICK_RATE);
+    room.players.forEach(resetInputs);
+    broadcast(room, 'resumed');
+  } else {
+    room.resumeUntil ||= Date.now() + matchReconnectMs;
+    broadcast(room, 'paused');
+  }
+}
+
 function enterRoom(client, code, resumeToken) {
   const room = rooms.get(code);
   if (room && roomIsExpired(room, Date.now())) {
     expireRoom(room, 'This room expired. Create a new invite to play again.');
   }
   if (resumeToken) {
-    if (!rooms.has(code) || room.duel || room.resumeToken !== resumeToken) {
+    const slot = room?.tokens.indexOf(resumeToken) ?? -1;
+    if (!rooms.has(code) || room.duel?.ended || slot < 0 || (slot === 1 && !room.duel)) {
       send(client, { type: 'error', code: 'resume_unavailable', reason: 'This duel can no longer be resumed. Create a fresh invite.' });
     } else {
-      const previous = room.players[0];
-      if (previous) {
-        previous.room = null;
-        send(previous, { type: 'left', reason: 'Hosting resumed in another tab.' });
-        previous.close();
-      }
-      room.resumeUntil = 0;
-      attachPlayer(client, room, 0);
+      resumePlayer(client, room, slot);
     }
     return;
   }
@@ -150,19 +187,17 @@ function enterRoom(client, code, resumeToken) {
     send(client, { type: 'error', code: 'host_away', reason: 'The host disconnected. Ask them to return to their host tab, then select Join again.' });
   } else {
     attachPlayer(client, room, 1);
+    startRound(room);
   }
 }
 
 function startRound(room) {
   room.duel = createDuel();
   room.round++;
+  room.epoch = 0;
   room.events = [];
   for (const client of room.players) {
-    client.queue = [];
-    client.ack = 0;
-    client.lastSeq = 0;
-    client.lastInput = NONE;
-    client.lastInputTick = 0;
+    resetInputs(client);
     client.ready = false;
   }
   broadcast(room, 'start');
@@ -171,8 +206,9 @@ function startRound(room) {
 function broadcast(room, type) {
   const { history, ...snapshot } = room.duel;
   for (const client of room.players) {
+    if (!client) continue;
     send(client, {
-      type, round: room.round, ...snapshot,
+      type, round: room.round, epoch: room.epoch, ...snapshot,
       ack: client.ack, events: room.events,
     });
   }
@@ -181,7 +217,8 @@ function broadcast(room, type) {
 
 function acceptInput(client, message) {
   const duel = client.room.duel;
-  if (!duel || duel.countdown > 0 || duel.ended || message.round !== client.room.round ||
+  if (!duel || duel.countdown > 0 || duel.ended || client.room.resumeUntil ||
+      message.round !== client.room.round || (message.epoch ?? 0) !== client.room.epoch ||
       !Array.isArray(message.frames) || message.frames.length > 2) return;
   for (const frame of message.frames) {
     if (!Array.isArray(frame) || (frame.length !== 4 && frame.length !== 5)) continue;
@@ -225,6 +262,7 @@ function ping(client) {
 sockets.on('connection', client => {
   client.room = null;
   client.pongAt = Date.now();
+  client.lastSeenAt = client.pongAt;
   client.rttMs = 0;
   let allowance = 80;
   let allowanceAt = performance.now();
@@ -233,22 +271,30 @@ sockets.on('connection', client => {
     client.pongAt = Date.now();
     if (payload.equals(client.pingPayload)) client.rttMs = performance.now() - client.pingStarted;
   });
-  client.on('error', () => client.terminate());
-  client.on('close', () => {
+  client.on('error', error => drop(client, error.code || 'socket error'));
+  client.on('close', code => {
     clearTimeout(joinTimeout);
     const room = client.room;
     if (!room) return;
-    if (room.duel) expireRoom(room, 'Your opponent left the room.');
-    else detachHost(room, client);
+    console.log(JSON.stringify({ event: 'duel_socket_closed', slot: client.slot, code,
+      reason: client.disconnectReason || 'peer closed', active: Boolean(room.duel && !room.duel.ended) }));
+    if (!room.duel) detachHost(room, client);
+    else if (room.duel.ended) expireRoom(room, 'Your opponent left the room.');
+    else pauseForDisconnect(room, client);
   });
   client.on('message', (raw, binary) => {
     const now = performance.now();
     allowance = Math.min(80, allowance + (now - allowanceAt) * .055) - 1;
     allowanceAt = now;
-    if (allowance < 0 || binary) { client.close(1008); return; }
+    if (allowance < 0 || binary) {
+      client.disconnectReason = allowance < 0 ? 'message rate' : 'unexpected binary input';
+      client.close(1008);
+      return;
+    }
     let message;
     try { message = JSON.parse(raw); } catch { return; }
     if (!message || typeof message !== 'object') return;
+    client.lastSeenAt = Date.now();
     if (message.type === 'ping' && Number.isFinite(message.sent)) {
       send(client, { type: 'pong', sent: message.sent });
       return;
@@ -266,8 +312,9 @@ sockets.on('connection', client => {
       return;
     }
     if (message.type === 'leave') { expireRoom(room, 'Your opponent left the room.'); return; }
-    if (message.type === 'suspend' && !room.duel && client.slot === 0) {
-      detachHost(room, client);
+    if (message.type === 'suspend' && !room.duel?.ended) {
+      if (room.duel) pauseForDisconnect(room, client);
+      else detachHost(room, client);
       client.close();
       return;
     }
@@ -289,7 +336,7 @@ setInterval(() => {
     nextTick += STEP * 1000;
     for (const room of rooms.values()) {
       const duel = room.duel;
-      if (!duel || duel.ended) continue;
+      if (!duel || duel.ended || room.resumeUntil) continue;
       const inputs = duel.countdown ? [NONE, NONE] : room.players.map(player => nextInput(player, duel.tick));
       room.events.push(...stepDuel(duel, inputs));
       if (duel.ended) room.expires = Date.now() + waitingMs;
@@ -299,15 +346,21 @@ setInterval(() => {
   if (now - nextTick > 100) nextTick = now + STEP * 1000;
 }, 8).unref();
 
+let nextHeartbeat = 0;
 setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    if (roomIsExpired(room, now)) expireRoom(room, 'This room expired. Create a new invite to play again.');
+    if (roomIsExpired(room, now)) expireRoom(room, room.duel && !room.duel.ended
+      ? 'The connection could not be restored. Create a new duel to play again.'
+      : 'This room expired. Create a new invite to play again.');
   }
   for (const client of sockets.clients) {
-    if (now - client.pongAt > 30_000) client.terminate();
-    else if (client.readyState === WebSocket.OPEN) ping(client);
+    if (client.room?.duel && !client.room.duel.ended && now - client.lastSeenAt > 8000) {
+      drop(client, 'no game traffic');
+    } else if (now - client.pongAt > 30_000) drop(client, 'heartbeat timeout');
+    else if (now >= nextHeartbeat && client.readyState === WebSocket.OPEN) ping(client);
   }
-}, 10_000).unref();
+  if (now >= nextHeartbeat) nextHeartbeat = now + 10_000;
+}, 1000).unref();
 
 server.listen(port, host, () => console.log('VIBER BRAWL Online is listening on ' + host + ':' + server.address().port));
