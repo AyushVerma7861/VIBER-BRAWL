@@ -6,7 +6,8 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node multiplayer/server.mjs",
-    "test": "node --test multiplayer/*.test.mjs"
+    "test": "node --test multiplayer/*.test.mjs",
+    "test:matches": "node multiplayer/match-soak.mjs"
   },
   "dependencies": { "ws": "8.22.2" }
 }

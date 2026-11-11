@@ -14,6 +14,8 @@ npm start
 
 Open http://127.0.0.1:8788/online in two browser windows. For two devices on the same trusted LAN, set `HOST=0.0.0.0` before starting and use the server computer’s LAN address in both browsers. On mobile, rotate to landscape.
 
+Run `npm run test:matches` against the local server, or pass your preview origin after `--`. The runner creates three private rooms with two players each. It checks a full timed duel and two rematch starts per room, including a finished stock match. One room adds delay and repeated update gaps. Another disconnects one player and then both players during the same timed duel to check that their seats and match state survive. Allow about four minutes and use a preview with room for all three matches.
+
 ## What changed in the duel
 
 | Rule | Duel |
