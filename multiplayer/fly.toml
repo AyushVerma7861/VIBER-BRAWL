@@ -1,8 +1,8 @@
 primary_region = "sin"
 
 [build]
-  dockerfile = "multiplayer/Dockerfile"
-  ignorefile = "multiplayer/Dockerfile.dockerignore"
+  dockerfile = "Dockerfile"
+  ignorefile = "Dockerfile.dockerignore"
 
 [http_service]
   internal_port = 8788
