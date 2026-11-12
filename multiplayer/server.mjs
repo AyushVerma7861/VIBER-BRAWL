@@ -2,14 +2,13 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createDuel, HEAVY, MAX_REWIND_TICKS, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
+import { createDuel, HEAVY, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
 import { packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
+import { rewindForView } from './lag-compensation.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const maxRooms = 8;
-const baseViewTicks = 6;
-const maxViewAge = 18;
 const waitingMs = 10 * 60_000;
 const reconnectMs = 2 * 60_000;
 const matchReconnectMs = 20_000;
@@ -250,9 +249,7 @@ function nextInput(client, tick) {
     client.lastInputTick = tick;
     client.lastInput = { x: input.x, z: input.z, buttons: 0 };
     if (input.viewTick !== null) {
-      const age = tick + 1 - input.viewTick;
-      const allowed = Math.min(MAX_REWIND_TICKS, baseViewTicks + Math.round(client.rttMs / (2000 * STEP)));
-      if (age <= maxViewAge) input.rewind = Math.min(age, allowed);
+      input.rewind = rewindForView(input.viewTick, tick + 1, client.rttMs);
     }
     return input;
   }

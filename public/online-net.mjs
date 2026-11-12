@@ -2,9 +2,9 @@ import { STEP } from './online-sim.mjs';
 
 export const SNAPSHOT_EVERY = 3;
 export const MAX_EXTRAPOLATION_TICKS = 4;
+export const MAX_INTERPOLATION_TICKS = 11;
 const tickMs = STEP * 1000;
 const minDelay = SNAPSHOT_EVERY * 2;
-const maxDelay = 11;
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
 // Move at a steady rate between snapshots. Late packets change the target
@@ -22,7 +22,7 @@ export class OpponentClock {
     const sorted = [...this.arrivals].sort((a, b) => a - b);
     this.anchor = sorted[Math.floor((sorted.length - 1) * .1)];
     const late = sorted[Math.ceil(sorted.length * .9) - 1] - this.anchor;
-    const targetDelay = clamp(minDelay + late, minDelay, maxDelay);
+    const targetDelay = clamp(minDelay + late, minDelay, MAX_INTERPOLATION_TICKS);
     this.delay += (targetDelay - this.delay) * (targetDelay > this.delay ? .35 : .04);
     this.latestTick = tick;
     if (this.tick === undefined) {
