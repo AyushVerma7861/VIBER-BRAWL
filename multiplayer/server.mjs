@@ -262,17 +262,38 @@ function ping(client) {
   client.ping(client.pingPayload);
 }
 
+function probeLatency(client, now) {
+  client.latencyProbeAt = now;
+  const nonce = randomBytes(6).toString('base64url');
+  client.latencyChallenge = { nonce, sent: performance.now() };
+  send(client, { type: 'latency_probe', nonce });
+}
+
+function recordLatency(client, nonce, now) {
+  const challenge = client.latencyChallenge;
+  if (!challenge || nonce !== challenge.nonce) return;
+  client.latencyChallenge = null;
+  client.latencySamples.push(now - challenge.sent);
+  if (client.latencySamples.length > 5) client.latencySamples.shift();
+  const sorted = [...client.latencySamples].sort((a, b) => a - b);
+  client.rttMs = sorted[Math.floor(sorted.length / 2)];
+}
+
 sockets.on('connection', client => {
   client.room = null;
   client.pongAt = Date.now();
   client.lastSeenAt = client.pongAt;
   client.rttMs = 0;
+  client.latencyProbeAt = 0;
+  client.latencySamples = [];
   let allowance = 80;
   let allowanceAt = performance.now();
   let joinTimeout = setTimeout(() => client.close(), 15_000);
   client.on('pong', payload => {
     client.pongAt = Date.now();
-    if (payload.equals(client.pingPayload)) client.rttMs = performance.now() - client.pingStarted;
+    if (!client.latencySamples.length && payload.equals(client.pingPayload)) {
+      client.rttMs = performance.now() - client.pingStarted;
+    }
   });
   client.on('error', error => drop(client, error.code || 'socket error'));
   client.on('close', code => {
@@ -302,9 +323,14 @@ sockets.on('connection', client => {
       send(client, { type: 'pong', sent: message.sent });
       return;
     }
+    if (message.type === 'latency_ack') {
+      recordLatency(client, message.nonce, now);
+      return;
+    }
     const room = client.room;
     if (!room) {
       client.compactSnapshots = message.compactSnapshots === true;
+      client.latencyProbes = message.latencyProbes === true;
       if (message.type === 'create') createRoom(client);
       if (typeof message.code === 'string' && ROOM_CODE.test(message.code)) {
         if (message.type === 'join') enterRoom(client, message.code);
@@ -363,8 +389,12 @@ setInterval(() => {
   for (const client of sockets.clients) {
     if (client.room?.duel && !client.room.duel.ended && now - client.lastSeenAt > 8000) {
       drop(client, 'no game traffic');
-    } else if (now - client.pongAt > 30_000) drop(client, 'heartbeat timeout');
-    else if (now >= nextHeartbeat && client.readyState === WebSocket.OPEN) ping(client);
+    } else if (now - client.pongAt > 30_000) {
+      drop(client, 'heartbeat timeout');
+    } else if (client.readyState === WebSocket.OPEN) {
+      if (now >= nextHeartbeat) ping(client);
+      if (client.room?.duel && client.latencyProbes && now - client.latencyProbeAt >= 3000) probeLatency(client, now);
+    }
   }
   if (now >= nextHeartbeat) nextHeartbeat = now + 10_000;
 }, 1000).unref();

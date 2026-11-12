@@ -162,7 +162,7 @@ export function mountOnline(arena) {
     connection.addEventListener('open', () => {
       if (socket !== connection) return;
       const request = resumeToken ? { type: 'resume', code, resumeToken } : code ? { type: 'join', code } : { type: 'create' };
-      send({ ...request, compactSnapshots: true });
+      send({ ...request, compactSnapshots: true, latencyProbes: true });
       const ping = () => send({ type: 'ping', sent: performance.now() });
       ping();
       pingTimer = setInterval(ping, 2000);
@@ -177,6 +177,9 @@ export function mountOnline(arena) {
       if (message.compact) message.fighters = message.fighters.map(unpackFighter);
       lastServerAt = performance.now();
       switch (message.type) {
+        case 'latency_probe':
+          send({ type: 'latency_ack', nonce: message.nonce });
+          break;
         case 'joined': {
           clearTimeout(connectTimer);
           slot = message.slot;
