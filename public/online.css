@@ -33,7 +33,10 @@ body.online-duel:not(.duel-playing) #touch { display: none; }
 .duel-lobby .duel-help { color: #cbc5b8; font-size: 13px; margin-bottom: 0; }
 .duel-lobby label { display: block; margin: 7px 0 3px; font-size: 14px; }
 .duel-row { display: flex; gap: 8px; }
-.duel-lobby input {
+.duel-actions { flex-wrap: wrap; margin: 8px 0; }
+.duel-lobby details { margin-bottom: 10px; }
+.duel-lobby summary { cursor: pointer; color: #dff902; }
+.duel-lobby input, .duel-lobby select {
   min-width: 0;
   flex: 1;
   border: 1px solid #746a56;
@@ -45,6 +48,7 @@ body.online-duel:not(.duel-playing) #touch { display: none; }
   user-select: text;
   -webkit-user-select: text;
 }
+.duel-lobby select { width: 100%; }
 .duel-lobby button, .duel-bar button {
   border: 0;
   border-radius: 8px;

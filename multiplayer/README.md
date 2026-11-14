@@ -1,6 +1,8 @@
 # Dungeon Duel alpha
 
-Private 1v1 in VIBER BRAWL’s Dungeon. Create a duel, keep the host tab open, and send the invite link. The friend opens it and selects Join. To test alone, open the invite in a second tab. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
+Online 1v1 in VIBER BRAWL’s Dungeon. Select Quick Match to find an opponent, or create a private room and send the invite link. To test a private room alone, open the invite in a second tab. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
+
+Open Servers to see recent ping or select a region. Quick Match uses a shared queue for all regions. Auto picks the compatible region with the lowest ping for the slower player, using combined ping to break ties. Manual selection restricts the search to that region. The search widens from 160 ms to 350 ms after the older player has waited 20 seconds and expires after two minutes. A private invite always opens the server that created the room.
 
 ## Run
 
@@ -32,7 +34,9 @@ If the host disconnects while waiting, they can resume on the same invite for up
 
 ## Host for ₹0
 
-Use the included Render Blueprint from `preview/dungeon-duel`. Alternatively, create one **Free** Node web service in **Singapore** from that branch with build command `npm ci && npm test`, start command `npm start`, and health path `/health`. Share its `/online` URL. The same process serves the game and the WebSocket, so there is no separate frontend, database or domain to buy. Use the existing GitHub/Cloudflare process for the main game.
+Use **Free** Node web services in Singapore and Frankfurt from `preview/dungeon-duel`, with build command `npm ci && npm test`, start command `npm start`, and health path `/health`. Share the Singapore `/online` URL. The same process serves the game and the WebSocket, so no separate frontend, database or domain is needed. Use the existing GitHub/Cloudflare process for the main game.
+
+Set `DUEL_REGION` to the service's region ID, `DUEL_COORDINATOR` to `sin` on both services, and `DUEL_REGIONS` on both to the same JSON object. Each key is a region ID, and its value has a `name` and `origin`. Set the same random `DUEL_REGION_SECRET` on both servers through the host's environment settings. The secret authorizes match reservations between the servers. A single local process works without these variables.
 
 Render includes 750 free instance hours per workspace each month. The service sleeps after 15 minutes without incoming HTTP or WebSocket traffic, and can take about a minute to wake. For a hard ₹0 budget, use the Free plan without adding a payment method. If the included outbound bandwidth is exhausted, Render suspends free services until the allowance resets. A restart drops current matches.
 

@@ -1,5 +1,6 @@
 import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, lerpAngle, stepFighter } from './online-sim.mjs';
 import { OpponentClock, unpackFighter } from './online-net.mjs';
+import { loadRegions, measureRegion, parseRoom, websocketUrl } from './online-lobby.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
 const invitation = new URL(location.href).searchParams.get('room') || '';
@@ -27,9 +28,18 @@ export function mountOnline(arena) {
     <div class="duel-lobby">
       <p class="duel-label">VIBER BRAWL / ONLINE ALPHA</p>
       <h1>Dungeon Duel</h1>
-      <p data-ui="status" role="status">A private 1v1. Three stocks each.</p>
+      <p data-ui="status" role="status">Online 1v1. Three stocks each.</p>
       <div data-ui="entry">
-        <button data-ui="create" type="button">Create duel</button>
+        <details data-ui="servers" hidden>
+          <summary>Servers <span data-ui="region-summary"></span></summary>
+          <label for="duel-region">Server preference</label>
+          <select id="duel-region"><option value="">Auto</option></select>
+          <p class="duel-help">Auto chooses for both players in Quick Match. For a room code, select the host’s server. Invite links pick it for you.</p>
+        </details>
+        <div class="duel-row duel-actions">
+          <button data-ui="quick" type="button" hidden>Quick Match</button>
+          <button data-ui="create" type="button">Create private room</button>
+        </div>
         <button data-ui="resume" type="button" hidden>Resume hosting</button>
         <form data-ui="join-form">
           <label for="duel-code">Room code or invite link</label>
@@ -53,12 +63,18 @@ export function mountOnline(arena) {
     .map(element => [element.dataset.ui, element]));
   const codeField = panel.querySelector('#duel-code');
   const linkField = panel.querySelector('#duel-link');
+  const regionField = panel.querySelector('#duel-region');
   if (ROOM_CODE.test(invitation)) {
     codeField.value = invitation;
     ui.status.textContent = 'Invite ready. Select Join to enter.';
   }
 
-  let socket, pingTimer, connectTimer, reconnectTimer;
+  let socket, queue, queueTimer, pingTimer, connectTimer, reconnectTimer;
+  let probeController, probeTimer, config;
+  const regions = new Map();
+  const regionPings = new Map();
+  const regionPingTimes = new Map();
+  const regionOptions = new Map();
   let seat = readSeat();
   let reconnectUntil = 0, retryDelay = 500, lastServerAt = 0;
   let paused = false;
@@ -80,6 +96,72 @@ export function mountOnline(arena) {
     if (socket?.readyState === open) socket.send(JSON.stringify(message));
   };
   const setStatus = message => { ui.status.textContent = message; };
+  const knownOrigin = origin => origin === location.origin || [...regions.values()].some(region => region.origin === origin);
+  const regionOrigin = id => regions.get(id)?.origin || location.origin;
+  const regionName = origin => [...regions.values()].find(region => region.origin === origin)?.name || '';
+  function preferredOrigin() {
+    return regionField.value ? regionOrigin(regionField.value) : regionOrigin(config?.local);
+  }
+  function bestOrigin() {
+    if (regionField.value) return preferredOrigin();
+    const best = [...regionPings].filter(([id]) => performance.now() - regionPingTimes.get(id) < 30_000)
+      .sort((a, b) => a[1] - b[1])[0];
+    return best ? regionOrigin(best[0]) : preferredOrigin();
+  }
+  function updateRegionSummary() {
+    const best = [...regionPings].sort((a, b) => a[1] - b[1])[0]?.[0];
+    const id = regionField.value || best;
+    const ping = regionPings.get(id);
+    ui['region-summary'].textContent = id ? '· ' + regions.get(id).name + (Number.isFinite(ping) ? ' · ' + ping + ' ms' : '') : '· Auto';
+  }
+  function keepRegionPing(id, ping) {
+    if (ping === null) regionPings.delete(id);
+    else {
+      regionPings.set(id, ping);
+      regionPingTimes.set(id, performance.now());
+    }
+    regionOptions.get(id).textContent = regions.get(id).name + ' · ' + (ping === null ? 'unavailable' : ping + ' ms');
+    updateRegionSummary();
+  }
+  function stopProbes() {
+    clearTimeout(probeTimer);
+    probeController?.abort();
+    probeController = null;
+  }
+  function refreshRegions(force = false) {
+    if (!config || probeController || (!force && (ui.entry.hidden || document.hidden))) return;
+    const controller = probeController = new AbortController();
+    for (const [id, region] of regions) {
+      if (!regionPings.has(id)) regionOptions.get(id).textContent = region.name + ' · checking…';
+    }
+    Promise.all([...regions].map(async ([id, region]) => {
+      const ping = await measureRegion(region, controller.signal);
+      if (controller.signal.aborted) return;
+      keepRegionPing(id, ping);
+    })).finally(() => {
+      if (probeController !== controller) return;
+      probeController = null;
+      if (ui.servers.open) probeTimer = setTimeout(refreshRegions, 12_000);
+    });
+  }
+  ui.servers.ontoggle = () => {
+    if (ui.servers.open) refreshRegions();
+    else stopProbes();
+  };
+  regionField.onchange = updateRegionSummary;
+  loadRegions().then(value => {
+    if (!value) return;
+    config = value;
+    for (const [id, region] of value.regions) {
+      regions.set(id, region);
+      const option = new Option(region.name, id);
+      regionOptions.set(id, option);
+      regionField.add(option);
+    }
+    ui.servers.hidden = regions.size < 2;
+    ui.quick.hidden = false;
+    updateRegionSummary();
+  });
   function rememberSeat(value) {
     seat = value;
     ui.resume.hidden = !value;
@@ -90,6 +172,11 @@ export function mountOnline(arena) {
     } catch {}
   }
   function closeConnection() {
+    stopProbes();
+    clearInterval(queueTimer);
+    const previousQueue = queue;
+    queue = null;
+    previousQueue?.close();
     clearInterval(pingTimer);
     clearTimeout(connectTimer);
     clearTimeout(reconnectTimer);
@@ -111,6 +198,7 @@ export function mountOnline(arena) {
     ui.rematch.hidden = true;
     setStatus(message);
     arena.lobby();
+    if (ui.servers.open) refreshRegions();
   }
 
   function retrySeat() {
@@ -127,7 +215,7 @@ export function mountOnline(arena) {
     } else {
       setStatus('Reconnecting to your duel…');
     }
-    reconnectTimer = setTimeout(() => connect(seat.code, seat.token), retryDelay);
+    reconnectTimer = setTimeout(() => connect(seat.code, seat.token, seat.origin), retryDelay);
     retryDelay = Math.min(4000, retryDelay * 2);
   }
 
@@ -143,8 +231,9 @@ export function mountOnline(arena) {
     }
   }
 
-  function connect(code, resumeToken) {
+  function connect(code, resumeToken, origin = location.origin, ticket) {
     if (socket) return;
+    stopProbes();
     setStatus(resumeToken ? 'Reconnecting to your duel…' : 'Connecting to the arena…');
     ui.entry.hidden = true;
     matchBar.hidden = false;
@@ -152,16 +241,16 @@ export function mountOnline(arena) {
     if (!latest) ui.ping.textContent = '';
     rtt = NaN;
     pingSamples = [];
-    const url = new URL('/duel', location.href);
-    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const connection = socket = new WebSocket(url);
+    ui.ping.dataset.region = regionName(origin);
+    const connection = socket = new WebSocket(websocketUrl(origin, '/duel'));
     connectTimer = setTimeout(() => {
       if (resumeToken) retrySeat();
       else reset('Connection timed out. Try again in a moment.');
-    }, resumeToken ? 8000 : 70_000);
+    }, resumeToken || ticket ? 8000 : 70_000);
     connection.addEventListener('open', () => {
       if (socket !== connection) return;
-      const request = resumeToken ? { type: 'resume', code, resumeToken } : code ? { type: 'join', code } : { type: 'create' };
+      const request = ticket ? { type: 'match_join', ticket } : resumeToken ? { type: 'resume', code, resumeToken } :
+        code ? { type: 'join', code } : { type: 'create' };
       send({ ...request, compactSnapshots: true, latencyProbes: true });
       const ping = () => send({ type: 'ping', sent: performance.now() });
       ping();
@@ -184,16 +273,15 @@ export function mountOnline(arena) {
           clearTimeout(connectTimer);
           slot = message.slot;
           reconnectUntil = 0;
-          if (message.resumeToken) rememberSeat({ code: message.code, token: message.resumeToken, inMatch: message.inMatch });
+          if (message.resumeToken) rememberSeat({ code: message.code, token: message.resumeToken, inMatch: message.inMatch, origin });
           if (message.inMatch) break;
-          const link = new URL(location.href);
-          link.pathname = '/online';
-          link.search = '';
-          link.hash = '';
+          if (message.matchmaking) { setStatus('Waiting for your match to start…'); break; }
+          const link = new URL('/online', origin);
           link.searchParams.set('room', message.code);
           linkField.value = link.href;
           ui.invite.hidden = slot !== 0;
-          setStatus('Waiting for your opponent…');
+          const name = regionName(origin);
+          setStatus(name ? 'Waiting for your opponent on ' + name + '…' : 'Waiting for your opponent…');
           break;
         }
         case 'start':
@@ -212,7 +300,7 @@ export function mountOnline(arena) {
           const sorted = [...pingSamples].sort((a, b) => a - b);
           const middle = Math.floor(sorted.length / 2);
           rtt = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-          if (!latest) ui.ping.textContent = Math.round(rtt) + ' ms';
+          if (!latest) ui.ping.textContent = pingLabel();
           break;
         }
         case 'ready':
@@ -234,19 +322,70 @@ export function mountOnline(arena) {
     });
   }
 
-  ui.create.onclick = () => connect(null);
+  function pingLabel() {
+    const name = ui.ping.dataset.region;
+    return Number.isFinite(rtt) ? (name ? name + ' · ' : '') + Math.round(rtt) + ' ms' : name || '';
+  }
+
+  ui.create.onclick = () => connect(null, null, bestOrigin());
+  ui.quick.onclick = async () => {
+    if (!config || socket || queue) return;
+    closeConnection();
+    ui.entry.hidden = true;
+    matchBar.hidden = false;
+    ui.ping.textContent = '';
+    setStatus('Checking servers…');
+    const controller = probeController = new AbortController();
+    const preferred = regionField.value;
+    const candidates = preferred ? [regions.get(preferred)] : [...regions.values()];
+    const pings = Object.fromEntries((await Promise.all(candidates.map(async region => {
+      const ping = await measureRegion(region, controller.signal);
+      if (!controller.signal.aborted) keepRegionPing(region.id, ping);
+      return [region.id, ping];
+    }))).filter(([, ping]) => Number.isFinite(ping)));
+    if (controller.signal.aborted) return;
+    probeController = null;
+    if (!Object.keys(pings).length || preferred && !(preferred in pings)) {
+      reset('No reachable server for this search. Try Auto or check again.');
+      return;
+    }
+    setStatus('Connecting to Quick Match…');
+    const connection = queue = new WebSocket(websocketUrl(regionOrigin(config.coordinator), '/duel-queue'));
+    connectTimer = setTimeout(() => reset('The matchmaking service is taking too long to respond. Try again.'), 70_000);
+    connection.onopen = () => {
+      if (queue !== connection) return;
+      connection.send(JSON.stringify({ type: 'search', pings, preferred }));
+      queueTimer = setInterval(() => {
+        if (connection.readyState === open) connection.send(JSON.stringify({ type: 'keepalive' }));
+      }, 10_000);
+    };
+    connection.onmessage = event => {
+      if (queue !== connection) return;
+      const message = JSON.parse(event.data);
+      if (message.type === 'searching') {
+        clearTimeout(connectTimer);
+        setStatus('Finding an opponent…');
+      } else if (message.type === 'match' && regions.has(message.region)) {
+        closeConnection();
+        connect(null, null, regionOrigin(message.region), message.ticket);
+      } else if (message.type === 'error') reset(message.reason);
+    };
+    connection.onclose = () => {
+      if (queue === connection) reset('Matchmaking disconnected. Select Quick Match to retry.');
+    };
+  };
   ui.resume.onclick = () => {
     if (!seat) return;
     reconnectUntil = Date.now() + 15_000;
     retryDelay = 500;
-    connect(seat.code, seat.token);
+    if (seat.origin && !knownOrigin(seat.origin)) { setStatus('Checking the server list. Try Resume again in a moment.'); return; }
+    connect(seat.code, seat.token, seat.origin);
   };
   ui['join-form'].onsubmit = event => {
     event.preventDefault();
-    let code = codeField.value.trim();
-    try { code = new URL(code).searchParams.get('room') || ''; } catch {}
-    if (!ROOM_CODE.test(code)) { setStatus('Enter a valid room code or invite link.'); return; }
-    connect(code);
+    const room = parseRoom(codeField.value.trim(), regions, location.origin);
+    if (!room || !ROOM_CODE.test(room.code)) { setStatus('Enter a valid room code or invite link.'); return; }
+    connect(room.code, null, room.origin || (ROOM_CODE.test(invitation) ? location.origin : preferredOrigin()));
   };
   ui.copy.onclick = async () => {
     try {
@@ -257,10 +396,11 @@ export function mountOnline(arena) {
     }
   };
   ui.leave.onclick = () => {
+    const searching = !!queue || !!probeController && ui.entry.hidden && !socket;
     if (slot >= 0 || reconnectUntil) rememberSeat(null);
     reconnectUntil = 0;
     send({ type: 'leave' });
-    reset('You left the duel.');
+    reset(searching ? 'Search cancelled.' : 'You left the duel.');
   };
   window.addEventListener('pagehide', () => {
     if (seat && !latest?.ended) send({ type: 'suspend' });
@@ -386,7 +526,7 @@ export function mountOnline(arena) {
       arena.release();
     }
     if (!latest.ended) ui.ping.textContent = paused ? (reconnectUntil ? 'Reconnecting…' : 'Waiting for opponent…')
-      : stale ? 'Connection stalled' : Number.isFinite(rtt) ? Math.round(rtt) + ' ms' : '';
+      : stale ? 'Connection stalled' : pingLabel();
     const nextBanner = paused ? 'Connection paused' : latest.countdown ? String(Math.ceil(latest.countdown / TICK_RATE)) : 'FIGHT!';
     if (nextBanner !== banner) { banner = nextBanner; arena.announce(banner); }
     const local = { ...predicted };

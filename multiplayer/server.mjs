@@ -5,6 +5,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { createDuel, HEAVY, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
 import { packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
 import { rewindForView } from './lag-compensation.mjs';
+import { installMatchmaking, matchTicket, regionId } from './matchmaking.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
@@ -14,6 +15,28 @@ const reconnectMs = 2 * 60_000;
 const matchReconnectMs = 20_000;
 const resumeTokenPattern = /^[A-Za-z0-9_-]{24}$/;
 const rooms = new Map();
+const ticketRooms = new Map();
+const localRegion = process.env.DUEL_REGION || 'local';
+const coordinator = process.env.DUEL_COORDINATOR || localRegion;
+const regionSecret = process.env.DUEL_REGION_SECRET || '';
+const regions = new Map(Object.entries(JSON.parse(process.env.DUEL_REGIONS || '{}')).map(([id, region]) => {
+  const url = new URL(region.origin);
+  if (!regionId.test(id) || typeof region.name !== 'string' ||
+      !['http:', 'https:'].includes(url.protocol) || url.href !== url.origin + '/') {
+    throw new Error('Invalid duel region ' + id);
+  }
+  return [id, { id, name: region.name, origin: url.origin }];
+}));
+if (regions.size && (!regions.has(localRegion) || !regions.has(coordinator) || regionSecret.length < 24)) {
+  throw new Error('Regional matchmaking requires both configured region IDs and DUEL_REGION_SECRET');
+}
+
+function allowed(request) {
+  try {
+    const origin = new URL(request.headers.origin);
+    return origin.host === request.headers.host || [...regions.values()].some(region => region.origin === origin.origin);
+  } catch { return false; }
+}
 
 const assets = new Map([
   ['/online', ['index.html', 'text/html; charset=utf-8']],
@@ -21,6 +44,7 @@ const assets = new Map([
   ['/online-client.mjs', ['online-client.mjs', 'text/javascript; charset=utf-8']],
   ['/online-sim.mjs', ['online-sim.mjs', 'text/javascript; charset=utf-8']],
   ['/online-net.mjs', ['online-net.mjs', 'text/javascript; charset=utf-8']],
+  ['/online-lobby.mjs', ['online-lobby.mjs', 'text/javascript; charset=utf-8']],
   ['/online.css', ['online.css', 'text/css; charset=utf-8']],
   ['/halloween-menu.css', ['halloween-menu.css', 'text/css; charset=utf-8']],
   ['/guide-poster.jpg', ['guide-poster.jpg', 'image/jpeg']],
@@ -35,6 +59,7 @@ const files = new Map(await Promise.all([...assets].map(async ([path, [file, typ
 
 const server = createServer((request, response) => {
   const path = request.url.split('?')[0];
+  if (path === '/duel-reservation') { matchmaking.reserve(request, response); return; }
   if (!['GET', 'HEAD'].includes(request.method)) {
     response.writeHead(405, { Allow: 'GET, HEAD' }).end();
     return;
@@ -46,6 +71,21 @@ const server = createServer((request, response) => {
   }
   if (path === '/health') {
     response.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+    return;
+  }
+  if (path === '/duel-regions') {
+    const list = regions.size ? [...regions.values()] : [{ id: localRegion, name: 'Local', origin: '' }];
+    response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      .end(JSON.stringify({ local: localRegion, coordinator, regions: list }));
+    return;
+  }
+  if (path === '/duel-ping') {
+    const origin = request.headers.origin;
+    if (origin && !allowed(request)) { response.writeHead(403).end(); return; }
+    response.writeHead(200, {
+      'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
+      ...(origin ? { 'Access-Control-Allow-Origin': origin } : {}),
+    }).end(JSON.stringify({ region: localRegion }));
     return;
   }
   const file = files.get(path);
@@ -62,10 +102,13 @@ const server = createServer((request, response) => {
 const sockets = new WebSocketServer({
   noServer: true, maxPayload: 512, maxFragments: 32, maxBufferedChunks: 32, perMessageDeflate: false,
 });
+const matchmaking = installMatchmaking(server, {
+  regions: regions.size ? regions : new Map([[localRegion, null]]),
+  local: localRegion, coordinator, secret: regionSecret, allowed, reserve: reserveMatch,
+});
 server.on('upgrade', (request, socket, head) => {
-  let sameOrigin = false;
-  try { sameOrigin = new URL(request.headers.origin).host === request.headers.host; } catch {}
-  if (request.url !== '/duel' || !sameOrigin || sockets.clients.size >= 24) {
+  if (matchmaking.upgrade(request, socket, head)) return;
+  if (request.url !== '/duel' || !allowed(request) || sockets.clients.size >= 24) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     return;
   }
@@ -85,6 +128,7 @@ function drop(client, reason) {
 
 function expireRoom(room, reason) {
   if (!rooms.delete(room.code)) return;
+  for (const ticket of room.tickets || []) ticketRooms.delete(ticket);
   for (const client of room.players) {
     if (!client) continue;
     client.room = null;
@@ -100,20 +144,46 @@ function attachPlayer(client, room, slot) {
   room.players[slot] = client;
   send(client, {
     type: 'joined', code: room.code, slot,
-    resumeToken: room.tokens[slot], inMatch: Boolean(room.duel && !room.duel.ended),
+    resumeToken: room.tokens[slot], inMatch: Boolean(room.duel && !room.duel.ended), matchmaking: Boolean(room.tickets),
   });
 }
 
-function createRoom(client) {
-  if (rooms.size >= maxRooms) { send(client, { type: 'error', reason: 'All duel rooms are in use. Try again shortly.' }); return; }
+function newRoom(expires = Date.now() + waitingMs) {
+  if (rooms.size >= maxRooms) return null;
   let code;
   do { code = randomBytes(9).toString('base64url'); } while (rooms.has(code));
   const room = {
     code, tokens: Array.from({ length: 2 }, () => randomBytes(18).toString('base64url')), players: [],
-    duel: null, events: [], round: 0, epoch: 0, expires: Date.now() + waitingMs, resumeUntil: 0,
+    duel: null, events: [], round: 0, epoch: 0, expires, resumeUntil: 0,
   };
   rooms.set(code, room);
-  attachPlayer(client, room, 0);
+  return room;
+}
+
+function createRoom(client) {
+  const room = newRoom();
+  if (room) attachPlayer(client, room, 0);
+  else send(client, { type: 'error', reason: 'All duel rooms are in use. Try again shortly.' });
+}
+
+function reserveMatch() {
+  const room = newRoom(Date.now() + 25_000);
+  if (!room) return null;
+  room.players = [null, null];
+  room.tickets = Array.from({ length: 2 }, () => randomBytes(18).toString('base64url'));
+  for (const ticket of room.tickets) ticketRooms.set(ticket, room);
+  return { tickets: room.tickets };
+}
+
+function joinMatch(client, ticket) {
+  const room = ticketRooms.get(ticket);
+  if (!room || roomIsExpired(room, Date.now())) {
+    send(client, { type: 'error', reason: 'This match is no longer available. Select Quick Match again.' });
+    return;
+  }
+  ticketRooms.delete(ticket);
+  attachPlayer(client, room, room.tickets.indexOf(ticket));
+  if (room.players.every(player => player?.readyState === WebSocket.OPEN)) startRound(room);
 }
 
 function roomIsExpired(room, now) {
@@ -172,7 +242,7 @@ function enterRoom(client, code, resumeToken) {
   }
   if (resumeToken) {
     const slot = room?.tokens.indexOf(resumeToken) ?? -1;
-    if (!rooms.has(code) || room.duel?.ended || slot < 0 || (slot === 1 && !room.duel)) {
+    if (!rooms.has(code) || room.duel?.ended || slot < 0 || (!room.duel && (slot === 1 || room.tickets))) {
       send(client, { type: 'error', code: 'resume_unavailable', reason: 'This duel can no longer be resumed. Create a fresh invite.' });
     } else {
       resumePlayer(client, room, slot);
@@ -302,7 +372,8 @@ sockets.on('connection', client => {
     if (!room) return;
     console.log(JSON.stringify({ event: 'duel_socket_closed', slot: client.slot, code,
       reason: client.disconnectReason || 'peer closed', active: Boolean(room.duel && !room.duel.ended) }));
-    if (!room.duel) detachHost(room, client);
+    if (!room.duel && room.tickets) expireRoom(room, 'Your opponent left before the duel started. Select Quick Match again.');
+    else if (!room.duel) detachHost(room, client);
     else if (room.duel.ended) expireRoom(room, 'Your opponent left the room.');
     else pauseForDisconnect(room, client);
   });
@@ -332,6 +403,9 @@ sockets.on('connection', client => {
       client.compactSnapshots = message.compactSnapshots === true;
       client.latencyProbes = message.latencyProbes === true;
       if (message.type === 'create') createRoom(client);
+      if (message.type === 'match_join' && typeof message.ticket === 'string' && matchTicket.test(message.ticket)) {
+        joinMatch(client, message.ticket);
+      }
       if (typeof message.code === 'string' && ROOM_CODE.test(message.code)) {
         if (message.type === 'join') enterRoom(client, message.code);
         if (message.type === 'resume' && typeof message.resumeToken === 'string' && resumeTokenPattern.test(message.resumeToken)) {
@@ -344,6 +418,7 @@ sockets.on('connection', client => {
     if (message.type === 'leave') { expireRoom(room, 'Your opponent left the room.'); return; }
     if (message.type === 'suspend' && !room.duel?.ended) {
       if (room.duel) pauseForDisconnect(room, client);
+      else if (room.tickets) expireRoom(room, 'Your opponent left before the duel started. Select Quick Match again.');
       else detachHost(room, client);
       client.close();
       return;
