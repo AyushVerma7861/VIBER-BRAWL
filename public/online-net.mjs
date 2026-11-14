@@ -5,6 +5,7 @@ export const MAX_EXTRAPOLATION_TICKS = 4;
 export const MAX_INTERPOLATION_TICKS = 11;
 const tickMs = STEP * 1000;
 const minDelay = SNAPSHOT_EVERY * 2;
+const catchUpThreshold = MAX_INTERPOLATION_TICKS;
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 const positionKeys = ['x', 'y', 'z'];
 const motionKeys = [...positionKeys, 'vx', 'vy', 'vz'];
@@ -38,7 +39,10 @@ export class OpponentClock {
     this.frameAt = now;
     const target = now / tickMs - this.anchor - this.delay;
     const drift = target - (this.tick + elapsed);
-    const speed = 1 + clamp(drift / 14, -.24, .4);
+    // After a burst, an extra fraction of a second of old motion can hide a
+    // direction change even though fresh snapshots are already available.
+    const backlog = Math.max(0, drift - catchUpThreshold);
+    const speed = 1 + clamp(drift / 14, -.24, .4) + clamp(backlog / 20, 0, .6);
     this.tick = Math.min(this.latestTick + MAX_EXTRAPOLATION_TICKS, this.tick + elapsed * speed);
     return this.tick;
   }

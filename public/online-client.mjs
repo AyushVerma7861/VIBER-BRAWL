@@ -5,6 +5,7 @@ import { mountDiagnostics } from './online-diagnostics.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
 const snapshotStallMs = 450;
+const maxSnapshots = 120;
 const options = new URL(location.href).searchParams;
 const invitation = options.get('room') || '';
 const open = WebSocket.OPEN;
@@ -446,7 +447,13 @@ export function mountOnline(arena) {
   function receive(message) {
     if (message.round !== round || latest && message.tick <= latest.tick) return;
     const now = performance.now();
-    if (latest && now - receivedAt > snapshotStallMs) arena.clearActions();
+    if (latest && now - receivedAt > snapshotStallMs) {
+      arena.clearActions();
+      // A single frame left in the two-frame batch may contain an old attack.
+      // It was never sent, so it must not be replayed or transmitted after recovery.
+      if (unsent.length && pending.at(-1)?.seq === unsent[0][0]) pending.pop();
+      unsent = [];
+    }
     opponentClock.sample(message.tick, now);
     const prior = predicted;
     const confirmed = message.fighters[slot];
@@ -468,7 +475,7 @@ export function mountOnline(arena) {
       offset = positionKeys.map((key, index) => Math.max(-2, Math.min(2, offset[index] + prior[key] - predicted[key])));
     }
     snapshots.push(message);
-    if (snapshots.length > 20) snapshots.shift();
+    if (snapshots.length > maxSnapshots) snapshots.shift();
     for (const event of message.events) arena.impact(event);
     if (message.ended) {
       panel.hidden = false;
@@ -516,8 +523,11 @@ export function mountOnline(arena) {
         arena.release();
       }
     }
-    if (!latest.ended) ui.ping.textContent = paused ? (reconnectUntil ? 'Reconnecting…' : 'Waiting for opponent…')
-      : stale ? 'Connection stalled' : pingLabel();
+    if (!latest.ended) {
+      const connectionLabel = paused ? (reconnectUntil ? 'Reconnecting…' : 'Waiting for opponent…')
+        : stale ? 'Connection stalled' : pingLabel();
+      if (ui.ping.textContent !== connectionLabel) ui.ping.textContent = connectionLabel;
+    }
     const nextBanner = paused ? 'Connection paused' : latest.countdown ? String(Math.ceil(latest.countdown / TICK_RATE)) : 'FIGHT!';
     if (nextBanner !== banner) { banner = nextBanner; arena.announce(banner); }
     const local = { ...predicted };
@@ -544,6 +554,7 @@ export function mountOnline(arena) {
       return value * Math.exp(-18 * dt);
     });
     lastRemote = { pose: remote, tick: Math.min(renderTick, latest.countdown ? latest.tick : Infinity), latestTick: latest.tick };
+    while (snapshots.length > 2 && snapshots[1].tick <= renderTick) snapshots.shift();
     const poses = slot === 0 ? [local, remote] : [remote, local];
     arena.draw(dt, poses, latest.remaining / TICK_RATE);
     if (diagnostics) {

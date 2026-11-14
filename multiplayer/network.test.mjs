@@ -45,6 +45,29 @@ test('compact snapshots preserve every fighter field for input replay', () => {
   assert.ok(compact.length < verbose.length * .5);
 });
 
+test('the opponent clock catches up after a long burst without skipping ahead', () => {
+  const clock = new OpponentClock();
+  const tickMs = STEP * 1000;
+  const releasedAt = 180 * tickMs + 800;
+  let shown = 0;
+  let nextTick = 0;
+  let recoveredAt;
+  for (let step = 0; step <= 300; step++) {
+    const now = step * tickMs;
+    while (nextTick * tickMs <= now && (nextTick < 180 || now >= releasedAt)) {
+      clock.sample(nextTick, Math.max(nextTick * tickMs, nextTick >= 180 ? releasedAt : 0));
+      nextTick += 3;
+    }
+    const next = clock.advance(now);
+    assert.ok(next >= shown && next - shown <= 2.01, 'presentation must advance smoothly');
+    assert.ok(next <= clock.latestTick + MAX_EXTRAPOLATION_TICKS);
+    shown = next;
+    const target = step - clock.anchor - clock.delay;
+    if (now >= releasedAt && recoveredAt === undefined && target - shown <= 3) recoveredAt = now;
+  }
+  assert.ok(recoveredAt - releasedAt < 1000, 'opponent stayed behind after the burst');
+});
+
 test('a late direction change is blended even when both frames extrapolate', () => {
   const fighter = createFighter(0);
   const snapshot = (tick, x, vx, life = 0) => ({ tick, fighters: [{ ...fighter, x, vx, life }] });
