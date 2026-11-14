@@ -1,5 +1,5 @@
-import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, lerpAngle, stepFighter } from './online-sim.mjs';
-import { OpponentClock, unpackFighter } from './online-net.mjs';
+import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, stepFighter } from './online-sim.mjs';
+import { OpponentClock, opponentCorrection, opponentPoseAt, unpackFighter } from './online-net.mjs';
 import { loadRegions, measureRegion, parseRoom, websocketUrl } from './online-lobby.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
@@ -87,7 +87,7 @@ export function mountOnline(arena) {
   let opponentClock = new OpponentClock();
   let pending = [], unsent = [], snapshots = [];
   let offset = [0, 0, 0];
-  let banner = '', lastRemote = null, guessedRemote = false;
+  let banner = '', lastRemote = null;
   let remoteOffset = [0, 0, 0];
   let rtt = NaN;
   let pingSamples = [];
@@ -426,7 +426,6 @@ export function mountOnline(arena) {
     offset = [0, 0, 0];
     remoteOffset = [0, 0, 0];
     lastRemote = null;
-    guessedRemote = false;
     banner = '';
     latest = null;
     predicted = null;
@@ -470,31 +469,6 @@ export function mountOnline(arena) {
     }
   }
 
-  function opponentAt(now) {
-    renderTick = opponentClock.advance(now);
-    while (snapshots.length > 2 && snapshots[1].tick <= renderTick) snapshots.shift();
-    const old = snapshots[0], next = snapshots[1];
-    const previous = old.fighters[1 - slot];
-    if (!next || renderTick <= old.tick) return previous;
-    const following = next.fighters[1 - slot];
-    if (renderTick > next.tick && !following.out && !next.countdown) {
-      const dt = (renderTick - next.tick) * STEP;
-      return { ...following, x: following.x + following.vx * dt, z: following.z + following.vz * dt,
-        y: following.grounded ? following.y : following.y + following.vy * dt };
-    }
-    const alpha = Math.min(1, (renderTick - old.tick) / (next.tick - old.tick));
-    if (previous.life !== following.life || Boolean(previous.out) !== Boolean(following.out)) {
-      return alpha < 1 ? previous : following;
-    }
-    const mixed = { ...(alpha < 1 ? previous : following) };
-    for (const key of [...positionKeys, 'vx', 'vy', 'vz']) mixed[key] = previous[key] + (following[key] - previous[key]) * alpha;
-    if (previous.attack && previous.attack === following.attack && following.attackAge >= previous.attackAge) {
-      mixed.attackAge = previous.attackAge + (following.attackAge - previous.attackAge) * alpha;
-    }
-    mixed.facing = lerpAngle(previous.facing, following.facing, alpha);
-    return mixed;
-  }
-
   arena.lobby();
   return function frame(elapsed, now) {
     const dt = Math.min(.05, elapsed);
@@ -535,19 +509,18 @@ export function mountOnline(arena) {
       return value * Math.exp(-17 * dt);
     });
     const confirmedRemote = latest.fighters[1 - slot];
-    const remote = { ...(latest.ended || paused ? confirmedRemote : opponentAt(now)),
+    const trackOpponent = !latest.ended && !paused;
+    if (trackOpponent) renderTick = opponentClock.advance(now);
+    const remote = { ...(trackOpponent ? opponentPoseAt(snapshots, renderTick, 1 - slot) : confirmedRemote),
       health: confirmedRemote.health, lives: confirmedRemote.lives };
-    const guessing = !paused && !latest.ended && !latest.countdown && renderTick > latest.tick;
-    if (!lastRemote || remote.life !== lastRemote.life || remote.out || paused) remoteOffset = [0, 0, 0];
-    else if (guessedRemote && !guessing) {
-      remoteOffset = positionKeys.map(key => Math.max(-1.5, Math.min(1.5, lastRemote[key] - remote[key])));
-    }
+    if (!trackOpponent || !lastRemote || remote.life !== lastRemote.pose.life ||
+        Boolean(remote.out) !== Boolean(lastRemote.pose.out)) remoteOffset = [0, 0, 0];
+    else remoteOffset = opponentCorrection(lastRemote, snapshots, 1 - slot, remote) ?? remoteOffset;
     remoteOffset = remoteOffset.map((value, index) => {
       remote[positionKeys[index]] += value;
       return value * Math.exp(-18 * dt);
     });
-    lastRemote = remote;
-    guessedRemote = guessing;
+    lastRemote = { pose: remote, tick: Math.min(renderTick, latest.countdown ? latest.tick : Infinity), latestTick: latest.tick };
     const poses = slot === 0 ? [local, remote] : [remote, local];
     arena.draw(dt, poses, latest.remaining / TICK_RATE);
   };

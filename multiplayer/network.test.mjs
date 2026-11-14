@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MAX_EXTRAPOLATION_TICKS, OpponentClock, packFighter, unpackFighter } from '../public/online-net.mjs';
+import {
+  MAX_EXTRAPOLATION_TICKS, OpponentClock, opponentCorrection, opponentPoseAt, packFighter, unpackFighter,
+} from '../public/online-net.mjs';
 import { createFighter, STEP, stepFighter } from '../public/online-sim.mjs';
 
 test('bursts of late snapshots do not keep stopping the opponent render clock', () => {
@@ -41,4 +43,21 @@ test('compact snapshots preserve every fighter field for input replay', () => {
   const compact = JSON.stringify(packFighter(fighter));
   assert.deepEqual(unpackFighter(JSON.parse(compact)), fighter);
   assert.ok(compact.length < verbose.length * .5);
+});
+
+test('a late direction change is blended even when both frames extrapolate', () => {
+  const fighter = createFighter(0);
+  const snapshot = (tick, x, vx, life = 0) => ({ tick, fighters: [{ ...fighter, x, vx, life }] });
+  const before = [snapshot(97, .35, 13), snapshot(100, 1, 13)];
+  const previous = { tick: 104, latestTick: 100, pose: opponentPoseAt(before, 104, 0) };
+  const after = [...before, snapshot(103, 1.65, -13)];
+  const current = opponentPoseAt(after, 105, 0);
+  const correction = opponentCorrection(previous, after, 0, current);
+  const shownAtPreviousTick = opponentPoseAt(after, 104, 0).x + correction[0];
+  assert.ok(Math.abs(shownAtPreviousTick - previous.pose.x) < 1e-9);
+  assert.ok(Math.abs(current.x - previous.pose.x) > .4);
+  assert.ok(Math.abs(current.x + correction[0] - previous.pose.x + 13 * STEP) < 1e-9);
+  assert.equal(opponentCorrection(previous, before, 0, current), null);
+  const respawn = [...before, snapshot(103, -5, 0, 1)];
+  assert.equal(opponentCorrection(previous, respawn, 0, opponentPoseAt(respawn, 105, 0)), null);
 });

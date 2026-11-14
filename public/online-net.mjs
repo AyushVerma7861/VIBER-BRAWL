@@ -1,4 +1,4 @@
-import { STEP } from './online-sim.mjs';
+import { STEP, lerpAngle } from './online-sim.mjs';
 
 export const SNAPSHOT_EVERY = 3;
 export const MAX_EXTRAPOLATION_TICKS = 4;
@@ -6,6 +6,8 @@ export const MAX_INTERPOLATION_TICKS = 11;
 const tickMs = STEP * 1000;
 const minDelay = SNAPSHOT_EVERY * 2;
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+const positionKeys = ['x', 'y', 'z'];
+const motionKeys = [...positionKeys, 'vx', 'vy', 'vz'];
 
 // Move at a steady rate between snapshots. Late packets change the target
 // delay, without resetting the displayed tick to each packet's arrival time.
@@ -40,6 +42,44 @@ export class OpponentClock {
     this.tick = Math.min(this.latestTick + MAX_EXTRAPOLATION_TICKS, this.tick + elapsed * speed);
     return this.tick;
   }
+}
+
+export function opponentPoseAt(snapshots, tick, slot) {
+  const nextIndex = snapshots.findIndex(snapshot => snapshot.tick >= tick);
+  if (snapshots.length === 1 || nextIndex === 0) return snapshots[0].fighters[slot];
+  const next = snapshots[nextIndex < 0 ? snapshots.length - 1 : nextIndex];
+  const following = next.fighters[slot];
+  if (nextIndex < 0) {
+    if (following.out || next.countdown) return following;
+    const dt = Math.min(MAX_EXTRAPOLATION_TICKS, tick - next.tick) * STEP;
+    return { ...following, x: following.x + following.vx * dt, z: following.z + following.vz * dt,
+      y: following.grounded ? following.y : following.y + following.vy * dt };
+  }
+  const old = snapshots[nextIndex - 1];
+  const previous = old.fighters[slot];
+  if (tick === next.tick) return following;
+  if (previous.life !== following.life || Boolean(previous.out) !== Boolean(following.out)) return previous;
+  const alpha = (tick - old.tick) / (next.tick - old.tick);
+  const mixed = { ...previous };
+  for (const key of motionKeys) {
+    mixed[key] = previous[key] + (following[key] - previous[key]) * alpha;
+  }
+  if (previous.attack && previous.attack === following.attack && following.attackAge >= previous.attackAge) {
+    mixed.attackAge = previous.attackAge + (following.attackAge - previous.attackAge) * alpha;
+  }
+  mixed.facing = lerpAngle(previous.facing, following.facing, alpha);
+  return mixed;
+}
+
+// A new snapshot can revise the path even if the clock is still extrapolating.
+// Compare both paths at the same displayed tick so ordinary movement is preserved.
+export function opponentCorrection(previous, snapshots, slot, current) {
+  const latestTick = snapshots.at(-1).tick;
+  if (previous.tick <= previous.latestTick || latestTick <= previous.latestTick) return null;
+  const revised = opponentPoseAt(snapshots, previous.tick, slot);
+  if (previous.pose.life !== current.life || revised.life !== current.life ||
+      Boolean(previous.pose.out) !== Boolean(current.out) || Boolean(revised.out) !== Boolean(current.out)) return null;
+  return positionKeys.map(key => clamp(previous.pose[key] - revised[key], -1.5, 1.5));
 }
 
 const fighterFields = [
