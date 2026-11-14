@@ -16,7 +16,7 @@ npm start
 
 Open http://127.0.0.1:8788/online in two browser windows. For two devices on the same trusted LAN, set `HOST=0.0.0.0` before starting and use the server computer’s LAN address in both browsers. On mobile, rotate to landscape.
 
-Add `?net=1` to `/online` to see local diagnostics during a duel. The overlay shows ping, time since the last game update, the largest update gap and frame time, and position corrections for both fighters. It resets each round and sends no measurements to the server. For an invite URL use `&net=1`.
+Add `?net=1` to `/online` to see local diagnostics during a duel. The overlay compares the largest gap between received updates with the server's send gap and skipped updates for that same packet. It also shows ping, frame time, and position corrections for both fighters. It resets each round. The browser keeps its measurements local. For an invite URL use `&net=1`.
 
 Run `npm run test:matches` against the local server, or pass your preview origin after `--`. The runner creates three private rooms with two players each. It checks a full timed duel and two rematch starts per room, including a finished stock match. One room adds delay and repeated update gaps. Another disconnects one player and then both players during the same timed duel to check that their seats and match state survive. Allow about four minutes and use a preview with room for all three matches.
 

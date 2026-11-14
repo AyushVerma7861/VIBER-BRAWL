@@ -73,6 +73,7 @@ class Seat {
     this.outgoing = orderedDelivery(spikes(profile, startedAt, 'up'));
     this.pings = [];
     this.gaps = [];
+    this.updateHitches = [];
     this.hits = [];
     this.unexpectedCloses = [];
     this.recoveries = 0;
@@ -105,7 +106,7 @@ class Seat {
         .finally(() => { this.recovery = null; });
     });
     await once(ws, 'open');
-    this.send({ ...request, compactSnapshots, latencyProbes: true });
+    this.send({ ...request, compactSnapshots, latencyProbes: true, snapshotTiming: true });
     const reply = await waitFor(() => {
       if (this.serverNotice) throw new Error(this.serverNotice);
       return this.joined;
@@ -156,7 +157,15 @@ class Seat {
     if (message.type === 'resumed') this.resumed = message;
     if (message.type === 'state' && !message.countdown) {
       const now = performance.now();
-      if (this.lastUpdateAt !== undefined) this.gaps.push(now - this.lastUpdateAt);
+      if (this.lastUpdateAt !== undefined) {
+        const gap = now - this.lastUpdateAt;
+        this.gaps.push(gap);
+        if (gap > 150) this.updateHitches.push({
+          receivedGapMs: Math.round(gap),
+          serverGapMs: message.timing?.[0] ?? null,
+          skippedByServer: message.timing?.[1] ?? null,
+        });
+      }
       this.lastUpdateAt = now;
     }
     for (const event of message.events) {
@@ -372,6 +381,7 @@ async function run(profile) {
       guestPingP50Ms: percentile(guest.pings, .5), guestPingP95Ms: percentile(guest.pings, .95),
       guestUpdateGapP95Ms: percentile(guest.gaps, .95), guestMaxUpdateGapMs: percentile(guest.gaps, 1),
       guestGapsAbove450Ms: guest.gaps.filter(gap => gap > 450).length,
+      guestWorstHitches: guest.updateHitches.toSorted((a, b) => b.receivedGapMs - a.receivedGapMs).slice(0, 3),
     };
     log(profile, JSON.stringify(stats));
   } finally {

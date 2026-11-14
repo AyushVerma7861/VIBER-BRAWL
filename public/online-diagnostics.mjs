@@ -6,21 +6,26 @@ export function mountDiagnostics(bar) {
 
   let latestUpdate, drawAt;
   let frameWorst, updateWorst, localWorst, remoteWorst, updateGaps, frameHitches;
+  let serverGapAtPeak, skippedAtPeak;
 
   function reset() {
     latestUpdate = undefined;
     drawAt = -Infinity;
     frameWorst = updateWorst = localWorst = remoteWorst = updateGaps = frameHitches = 0;
+    serverGapAtPeak = skippedAtPeak = null;
     panel.textContent = 'Waiting for duel updates…';
   }
   reset();
 
   return {
     reset,
-    snapshot(now) {
+    snapshot(now, timing) {
       if (latestUpdate !== undefined) {
         const gap = now - latestUpdate;
-        updateWorst = Math.max(updateWorst, gap);
+        if (gap > updateWorst) {
+          updateWorst = gap;
+          [serverGapAtPeak, skippedAtPeak] = timing ?? [null, null];
+        }
         if (gap > 150) updateGaps++;
       }
       latestUpdate = now;
@@ -38,6 +43,8 @@ export function mountDiagnostics(bar) {
       panel.textContent = [
         'Ping ' + timing(ping),
         'Game update age ' + timing(age) + ' · largest gap ' + timing(Math.max(updateWorst, age || 0)),
+        ...(serverGapAtPeak !== null ?
+          ['Server send gap at largest received gap ' + timing(serverGapAtPeak) + ' · skipped ' + skippedAtPeak] : []),
         'Longest frame ' + timing(frameWorst),
         'Largest position correction (arena units)',
         '  You ' + localWorst.toFixed(2) + ' · Opponent ' + remoteWorst.toFixed(2),

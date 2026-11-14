@@ -257,7 +257,7 @@ export function mountOnline(arena) {
       if (socket !== connection) return;
       const request = ticket ? { type: 'match_join', ticket } : resumeToken ? { type: 'resume', code, resumeToken } :
         code ? { type: 'join', code } : { type: 'create' };
-      send({ ...request, compactSnapshots: true, latencyProbes: true });
+      send({ ...request, compactSnapshots: true, latencyProbes: true, ...(diagnostics && { snapshotTiming: true }) });
       const ping = () => send({ type: 'ping', sent: performance.now() });
       ping();
       pingTimer = setInterval(ping, 2000);
@@ -458,7 +458,7 @@ export function mountOnline(arena) {
     const prior = predicted;
     const confirmed = message.fighters[slot];
     const trackDiagnostics = diagnostics && !paused && !message.countdown && !message.ended && !document.hidden;
-    if (trackDiagnostics) diagnostics.snapshot(now);
+    if (trackDiagnostics) diagnostics.snapshot(now, message.timing);
     receivedAt = now;
     latest = message;
     pending = pending.filter(input => input.seq > message.ack);

@@ -211,6 +211,8 @@ function resetInputs(client) {
   client.lastSeq = 0;
   client.lastInput = NONE;
   client.lastInputTick = -Infinity;
+  client.lastStateSentAt = undefined;
+  client.skippedStates = 0;
 }
 
 function resumePlayer(client, room, slot) {
@@ -276,15 +278,26 @@ function startRound(room) {
 
 function broadcast(room, type) {
   const { history, ...snapshot } = room.duel;
+  const now = performance.now();
   let compactFighters;
   for (const client of room.players) {
-    if (!client) continue;
+    if (client?.readyState !== WebSocket.OPEN) continue;
     if (type === 'state' && !snapshot.ended && !room.events.length &&
-        client.bufferedAmount > 4096 && client.bufferedAmount <= 32_768) continue;
+        client.bufferedAmount > 4096 && client.bufferedAmount <= 32_768) {
+      if (client.snapshotTiming) client.skippedStates++;
+      continue;
+    }
+    const timing = type === 'state' && client.snapshotTiming ?
+      [client.lastStateSentAt === undefined ? null : Math.round(now - client.lastStateSentAt), client.skippedStates] : null;
+    if (timing) {
+      client.lastStateSentAt = now;
+      client.skippedStates = 0;
+    }
     if (client.compactSnapshots) compactFighters ??= snapshot.fighters.map(packFighter);
     send(client, {
       type, round: room.round, epoch: room.epoch, ...snapshot,
       ...(client.compactSnapshots ? { compact: true, fighters: compactFighters } : {}),
+      ...(timing ? { timing } : {}),
       ack: client.ack, events: room.events,
     });
   }
@@ -403,6 +416,7 @@ sockets.on('connection', client => {
     if (!room) {
       client.compactSnapshots = message.compactSnapshots === true;
       client.latencyProbes = message.latencyProbes === true;
+      client.snapshotTiming = message.snapshotTiming === true;
       if (message.type === 'create') createRoom(client);
       if (message.type === 'match_join' && typeof message.ticket === 'string' && matchTicket.test(message.ticket)) {
         joinMatch(client, message.ticket);

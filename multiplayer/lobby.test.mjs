@@ -69,6 +69,7 @@ test('the invite survives a host refresh and both seats can resume a paused duel
   const third = await connect();
   assert.equal((await request(third, join)).code, 'room_full');
   const live = await waitFor(refreshed, m => m.type === 'state' && m.countdown === 0);
+  assert.equal(live.timing, undefined);
   const paused = waitFor(refreshed, m => m.type === 'paused');
   guest.terminate();
   const frozen = await paused;
@@ -76,7 +77,8 @@ test('the invite survives a host refresh and both seats can resume a paused duel
 
   const replacement = await connect();
   const bothResumed = waitFor(refreshed, m => m.type === 'resumed');
-  const joined = await request(replacement, { type: 'resume', code, resumeToken: guestReply.resumeToken, compactSnapshots: true });
+  const joined = await request(replacement, { type: 'resume', code, resumeToken: guestReply.resumeToken,
+    compactSnapshots: true, snapshotTiming: true });
   assert.equal(joined.slot, 1);
   assert.equal(joined.inMatch, true);
   const resumed = await bothResumed;
@@ -89,6 +91,8 @@ test('the invite survives a host refresh and both seats can resume a paused duel
 
   const ready = await waitFor(replacement, m => m.type === 'state' && m.countdown === 0);
   assert.equal(ready.compact, true);
+  assert.ok(Number.isInteger(ready.timing[0]) && ready.timing[0] >= 0);
+  assert.equal(ready.timing[1], 0);
   const jump = waitFor(refreshed, m => m.type === 'state' && m.fighters[1].y > 0.2);
   replacement.send(JSON.stringify({ type: 'input', round: ready.round, epoch: ready.epoch, frames: [[1, 0, 0, 1], [2, 0, 0, 0]] }));
   await jump;
