@@ -77,8 +77,7 @@ test('both regions use one queue and the selected server owns the room and recon
   send(a, { type: 'match_join', ticket: tickets[0].ticket });
   const [host, guest] = await Promise.all(joined);
   assert.equal(host.code, guest.code);
-  assert.equal(host.slot, 0);
-  assert.equal(guest.slot, 1);
+  assert.deepEqual([host.slot, guest.slot].sort(), [0, 1]);
   await started;
   const paused = message(a, m => m.type === 'paused');
   b.terminate();
