@@ -5063,6 +5063,7 @@ if(location.pathname==='/online'){
         return {x:c.dirX,z:c.dirZ,buttons:(c.jumpPressed?JUMP:0)|(c.dash?DASH:0)|(c.quick?QUICK:0)|(c.heavy?HEAVY:0)};
       },
       release:releaseAllInputs,
+      clearActions:clearEdges,
       announce:message=>announce(message,0.85),
       action(actions){
         if(actions&JUMP) SFX.jump();

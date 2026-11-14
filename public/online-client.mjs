@@ -4,6 +4,7 @@ import { loadRegions, measureRegion, parseRoom, websocketUrl } from './online-lo
 import { mountDiagnostics } from './online-diagnostics.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
+const snapshotStallMs = 450;
 const options = new URL(location.href).searchParams;
 const invitation = options.get('room') || '';
 const open = WebSocket.OPEN;
@@ -445,6 +446,7 @@ export function mountOnline(arena) {
   function receive(message) {
     if (message.round !== round || latest && message.tick <= latest.tick) return;
     const now = performance.now();
+    if (latest && now - receivedAt > snapshotStallMs) arena.clearActions();
     opponentClock.sample(message.tick, now);
     const prior = predicted;
     const confirmed = message.fighters[slot];
@@ -483,7 +485,7 @@ export function mountOnline(arena) {
   return function frame(elapsed, now) {
     const dt = Math.min(.05, elapsed);
     if (!latest) { arena.draw(dt); return; }
-    const stale = now - receivedAt > 450;
+    const stale = now - receivedAt > snapshotStallMs;
     if (!latest.ended && socket?.readyState === open && now - lastServerAt > 5000) {
       connectionLost();
       if (!latest) { arena.draw(dt); return; }
@@ -507,7 +509,12 @@ export function mountOnline(arena) {
       if (pending.length >= 36) accumulator = 0;
     } else {
       accumulator = 0;
-      arena.release();
+      if (stale && !paused && !latest.countdown && !latest.ended && !document.hidden) {
+        // Keep held movement through a brief network stall. Discard one-shot actions.
+        arena.clearActions();
+      } else {
+        arena.release();
+      }
     }
     if (!latest.ended) ui.ping.textContent = paused ? (reconnectUntil ? 'Reconnecting…' : 'Waiting for opponent…')
       : stale ? 'Connection stalled' : pingLabel();
