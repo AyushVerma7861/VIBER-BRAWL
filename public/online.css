@@ -74,3 +74,22 @@ body.online-duel:not(.duel-playing) #touch { display: none; }
 }
 .duel-bar span:not(:empty) { padding: 3px 8px; border-radius: 5px; background: #161927; }
 body.is-touch .duel-bar { right: 50%; transform: translateX(50%); }
+.duel-diagnostics {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: #161927e8;
+  color: #fff4d7;
+  font: 12px/1.35 monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+body.duel-playing .duel-diagnostics { display: block; }

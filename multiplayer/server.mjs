@@ -45,6 +45,7 @@ const assets = new Map([
   ['/online-sim.mjs', ['online-sim.mjs', 'text/javascript; charset=utf-8']],
   ['/online-net.mjs', ['online-net.mjs', 'text/javascript; charset=utf-8']],
   ['/online-lobby.mjs', ['online-lobby.mjs', 'text/javascript; charset=utf-8']],
+  ['/online-diagnostics.mjs', ['online-diagnostics.mjs', 'text/javascript; charset=utf-8']],
   ['/online.css', ['online.css', 'text/css; charset=utf-8']],
   ['/halloween-menu.css', ['halloween-menu.css', 'text/css; charset=utf-8']],
   ['/guide-poster.jpg', ['guide-poster.jpg', 'image/jpeg']],

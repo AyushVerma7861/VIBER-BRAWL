@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import WebSocket from 'ws';
 import { unpackFighter } from '../public/online-net.mjs';
-import { ATTACK, HEALTH, LIVES, MATCH_TICKS, QUICK, TICK_RATE } from '../public/online-sim.mjs';
+import { ATTACK, DASH, HEALTH, LIVES, MATCH_TICKS, QUICK, TICK_RATE } from '../public/online-sim.mjs';
 
 const origin = new URL(process.argv[2] ?? 'http://127.0.0.1:8788').origin;
 const endpoint = new URL('/duel', origin);
@@ -105,7 +105,7 @@ class Seat {
         .finally(() => { this.recovery = null; });
     });
     await once(ws, 'open');
-    this.send({ ...request, compactSnapshots });
+    this.send({ ...request, compactSnapshots, latencyProbes: true });
     const reply = await waitFor(() => {
       if (this.serverNotice) throw new Error(this.serverNotice);
       return this.joined;
@@ -138,6 +138,7 @@ class Seat {
 
   receive(message) {
     this.lastServerAt = performance.now();
+    if (message.type === 'latency_probe') this.send({ type: 'latency_ack', nonce: message.nonce });
     if (message.type === 'joined') this.joined = message;
     if (message.type === 'pong') this.pings.push(performance.now() - message.sent);
     if (message.type === 'error' || message.type === 'left') this.serverNotice = message.reason;
@@ -246,6 +247,18 @@ async function singleHit(seats, round) {
   }
 }
 
+async function checkDash(seats) {
+  const [host, guest] = seats;
+  const slot = guest.slot;
+  const startX = guest.snapshot.fighters[slot].x;
+  const observed = [host, guest].map(seat => waitFor(() => {
+    const fighter = seat.snapshot?.fighters[slot];
+    return fighter?.dashTicks > 0 && fighter.x < startX - .35;
+  }, `seat ${seat.slot} to see the guest dash`, 8000));
+  await Promise.all([...observed, guest.playFrames([[-1, DASH]])]);
+  log('dash', 'both views confirmed the guest dash');
+}
+
 async function reconnect(seats, profile) {
   const [host, guest] = seats;
   await waitFor(() => host.snapshot?.remaining <= MATCH_TICKS - 60 * TICK_RATE, 'one minute of active play', 82_000);
@@ -328,6 +341,7 @@ async function run(profile) {
     }, 30_000);
     await singleHit(seats, 1);
     log(profile, 'both players confirmed one quick hit');
+    await checkDash(seats);
     if (profile === 'reconnect') await reconnect(seats, profile);
 
     const timed = await result(seats, 1, 0, 215_000);

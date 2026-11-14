@@ -1,9 +1,11 @@
 import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, stepFighter } from './online-sim.mjs';
 import { OpponentClock, opponentCorrection, opponentPoseAt, unpackFighter } from './online-net.mjs';
 import { loadRegions, measureRegion, parseRoom, websocketUrl } from './online-lobby.mjs';
+import { mountDiagnostics } from './online-diagnostics.mjs';
 
 const positionKeys = ['x', 'y', 'z'];
-const invitation = new URL(location.href).searchParams.get('room') || '';
+const options = new URL(location.href).searchParams;
+const invitation = options.get('room') || '';
 const open = WebSocket.OPEN;
 const hostStorageKey = 'dungeon-duel-host';
 
@@ -59,6 +61,7 @@ export function mountOnline(arena) {
   matchBar.hidden = true;
   matchBar.innerHTML = '<span data-ui="ping"></span><button type="button" data-ui="leave">Leave</button>';
   document.body.append(panel, matchBar);
+  const diagnostics = options.get('net') === '1' ? mountDiagnostics(matchBar) : null;
   const ui = Object.fromEntries([...panel.querySelectorAll('[data-ui]'), ...matchBar.querySelectorAll('[data-ui]')]
     .map(element => [element.dataset.ui, element]));
   const codeField = panel.querySelector('#duel-code');
@@ -198,6 +201,7 @@ export function mountOnline(arena) {
     ui.rematch.hidden = true;
     setStatus(message);
     arena.lobby();
+    diagnostics?.reset();
     if (ui.servers.open) refreshRegions();
   }
 
@@ -412,6 +416,8 @@ export function mountOnline(arena) {
 
   function start(message, isPaused = false) {
     const newRound = !latest || round !== message.round;
+    if (newRound) diagnostics?.reset();
+    else diagnostics?.pause();
     if (seat && !seat.inMatch) rememberSeat({ ...seat, inMatch: true });
     paused = isPaused;
     round = message.round;
@@ -442,6 +448,8 @@ export function mountOnline(arena) {
     opponentClock.sample(message.tick, now);
     const prior = predicted;
     const confirmed = message.fighters[slot];
+    const trackDiagnostics = diagnostics && !paused && !message.countdown && !message.ended && !document.hidden;
+    if (trackDiagnostics) diagnostics.snapshot(now);
     receivedAt = now;
     latest = message;
     pending = pending.filter(input => input.seq > message.ack);
@@ -449,8 +457,10 @@ export function mountOnline(arena) {
     if (!paused && !message.countdown && !message.ended) {
       for (const input of pending) stepFighter(predicted, input, message.fighters[1 - slot]);
     }
-    if (!prior || prior.life !== predicted.life || predicted.out || Math.hypot(
-      prior.x - predicted.x, prior.y - predicted.y, prior.z - predicted.z) > 3) {
+    const correction = prior && prior.life === predicted.life && !predicted.out ?
+      Math.hypot(prior.x - predicted.x, prior.y - predicted.y, prior.z - predicted.z) : null;
+    if (trackDiagnostics && correction !== null) diagnostics.localCorrection(correction);
+    if (correction === null || correction > 3) {
       offset = [0, 0, 0];
     } else {
       offset = positionKeys.map((key, index) => Math.max(-2, Math.min(2, offset[index] + prior[key] - predicted[key])));
@@ -515,7 +525,13 @@ export function mountOnline(arena) {
       health: confirmedRemote.health, lives: confirmedRemote.lives };
     if (!trackOpponent || !lastRemote || remote.life !== lastRemote.pose.life ||
         Boolean(remote.out) !== Boolean(lastRemote.pose.out)) remoteOffset = [0, 0, 0];
-    else remoteOffset = opponentCorrection(lastRemote, snapshots, 1 - slot, remote) ?? remoteOffset;
+    else {
+      const correction = opponentCorrection(lastRemote, snapshots, 1 - slot, remote);
+      if (correction) {
+        remoteOffset = correction;
+        if (!document.hidden) diagnostics?.remoteCorrection(Math.hypot(...correction));
+      }
+    }
     remoteOffset = remoteOffset.map((value, index) => {
       remote[positionKeys[index]] += value;
       return value * Math.exp(-18 * dt);
@@ -523,6 +539,10 @@ export function mountOnline(arena) {
     lastRemote = { pose: remote, tick: Math.min(renderTick, latest.countdown ? latest.tick : Infinity), latestTick: latest.tick };
     const poses = slot === 0 ? [local, remote] : [remote, local];
     arena.draw(dt, poses, latest.remaining / TICK_RATE);
+    if (diagnostics) {
+      if (document.hidden || paused || latest.countdown || latest.ended) diagnostics.pause();
+      else diagnostics.frame(now, elapsed, rtt);
+    }
   };
 }
 
