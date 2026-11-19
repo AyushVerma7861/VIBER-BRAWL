@@ -238,8 +238,13 @@ try {
   await interrupt([guest], 9500);
   await interrupt(seats, 10_000);
   assert.ok(seats.every(seat => seat.room === room));
-  await until(() => finish && seats.every(seat => seat.state.ended), 'both browsers to see the end of the three-minute duel', 215_000);
-  assert.equal(finish.remaining, 0);
+  await key(host, 'KeyA', true);
+  try {
+    await until(() => finish && seats.every(seat => seat.state.ended), 'both browsers to see the final ring-out', 30_000);
+  } finally {
+    await key(host, 'KeyA', false);
+  }
+  assert.equal(fighters(finish)[0].lives, 0);
   assert.equal(finish.winner, 1);
   for (const seat of seats) {
     assert.deepEqual(stats(seat.state), stats(finish));
