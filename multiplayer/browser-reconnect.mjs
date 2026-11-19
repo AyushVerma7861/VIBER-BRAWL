@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,8 @@ import { unpackFighter } from '../public/online-net.mjs';
 
 const origin = new URL(process.argv[2]).origin;
 const chromePath = process.env.DUEL_CHROME || 'google-chrome';
+const checkoutClient = process.argv.includes('--client-from-checkout') ?
+  await readFile(new URL('../public/online-client.mjs', import.meta.url)) : null;
 const target = new URL('/duel', origin);
 target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
 const seats = ['host', 'guest'].map(name => ({
@@ -35,6 +37,10 @@ const proxy = createServer(async (req, res) => {
   try {
     const path = new URL(req.url, origin);
     if (path.origin !== origin) { res.writeHead(400).end(); return; }
+    if (checkoutClient && path.pathname === '/online-client.mjs') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }).end(checkoutClient);
+      return;
+    }
     if (path.pathname === '/duel-regions') {
       // Keep private room creation and invite links on this test relay.
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
@@ -206,6 +212,7 @@ async function interrupt(affected, ms) {
 }
 
 try {
+  console.log('Testing ' + origin + (checkoutClient ? ' with the checkout client' : ' with the deployed client'));
   const health = await fetch(origin + '/health', { signal: AbortSignal.timeout(70_000) });
   assert.equal(await health.text(), 'ok');
   proxy.listen(0, '127.0.0.1');
