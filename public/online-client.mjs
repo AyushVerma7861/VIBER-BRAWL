@@ -255,6 +255,7 @@ export function mountOnline(arena) {
     }, resumeToken || ticket ? 8000 : 70_000);
     connection.addEventListener('open', () => {
       if (socket !== connection) return;
+      lastServerAt = performance.now();
       const request = ticket ? { type: 'match_join', ticket } : resumeToken ? { type: 'resume', code, resumeToken } :
         code ? { type: 'join', code } : { type: 'create' };
       send({ ...request, compactSnapshots: true, latencyProbes: true, ...(diagnostics && { snapshotTiming: true }) });
