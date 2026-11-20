@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  MAX_EXTRAPOLATION_TICKS, OpponentClock, opponentCorrection, opponentPoseAt, packFighter, unpackFighter,
+  MAX_EXTRAPOLATION_TICKS, MAX_INTERPOLATION_TICKS, OpponentClock, opponentCorrection, opponentPoseAt,
+  packFighter, unpackFighter,
 } from '../public/online-net.mjs';
 import { createFighter, STEP, stepFighter } from '../public/online-sim.mjs';
 
@@ -83,4 +84,20 @@ test('a late direction change is blended even when both frames extrapolate', () 
   assert.equal(opponentCorrection(previous, before, 0, current), null);
   const respawn = [...before, snapshot(103, -5, 0, 1)];
   assert.equal(opponentCorrection(previous, respawn, 0, opponentPoseAt(respawn, 105, 0)), null);
+});
+
+test('the opponent clock skips obsolete replay after a multi-second backlog', () => {
+  const clock = new OpponentClock();
+  const tickMs = STEP * 1000;
+  for (let tick = 0; tick <= 60; tick += 3) {
+    clock.sample(tick, tick * tickMs);
+    clock.advance(tick * tickMs);
+  }
+  const recoveredAt = 240 * tickMs;
+  clock.advance(recoveredAt);
+  for (let tick = 63; tick <= 240; tick += 3) clock.sample(tick, recoveredAt);
+  const displayed = clock.advance(recoveredAt + tickMs);
+  assert.equal(clock.resynced, true);
+  assert.ok(displayed >= 240 - MAX_INTERPOLATION_TICKS && displayed <= 240,
+    'the display should return to the current buffer immediately');
 });

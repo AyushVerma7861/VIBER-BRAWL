@@ -73,12 +73,21 @@ test('both regions use one queue and the selected server owns the room and recon
   const [a, b] = await Promise.all([connect(fra, sin, '/duel'), connect(fra, fra, '/duel')]);
   const joined = [a, b].map(socket => message(socket, m => m.type === 'joined'));
   const started = message(a, m => m.type === 'start');
+  const playing = message(b, m => m.type === 'state' && !m.countdown);
   send(b, { type: 'match_join', ticket: tickets[1].ticket });
   send(a, { type: 'match_join', ticket: tickets[0].ticket });
   const [host, guest] = await Promise.all(joined);
   assert.equal(host.code, guest.code);
   assert.deepEqual([host.slot, guest.slot].sort(), [0, 1]);
   await started;
+  const { round, epoch } = await playing;
+  // Four seconds of normal two-frame batches can arrive together after a stall.
+  const batches = 120;
+  const caughtUp = message(b, m => m.type === 'state' && m.ack === batches * 2);
+  for (let i = 0; i < batches; i++) {
+    send(b, { type: 'input', round, epoch, frames: [[2 * i + 1, 0, 0, 0], [2 * i + 2, 0, 0, 0]] });
+  }
+  await caughtUp;
   const paused = message(a, m => m.type === 'paused');
   b.terminate();
   await paused;

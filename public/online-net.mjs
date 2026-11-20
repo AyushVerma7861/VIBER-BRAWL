@@ -1,8 +1,9 @@
-import { STEP, lerpAngle } from './online-sim.mjs';
+import { STEP, TICK_RATE, lerpAngle } from './online-sim.mjs';
 
 export const SNAPSHOT_EVERY = 3;
 export const MAX_EXTRAPOLATION_TICKS = 4;
 export const MAX_INTERPOLATION_TICKS = 11;
+export const DUEL_SILENCE_MS = 8000;
 const tickMs = STEP * 1000;
 const minDelay = SNAPSHOT_EVERY * 2;
 const catchUpThreshold = MAX_INTERPOLATION_TICKS;
@@ -38,6 +39,14 @@ export class OpponentClock {
     const elapsed = clamp((now - this.frameAt) / tickMs, 0, 3);
     this.frameAt = now;
     const target = now / tickMs - this.anchor - this.delay;
+    const bufferedTick = this.latestTick - this.delay;
+    // After a very long stall, playing the buffered frames at double speed
+    // still leaves the opponent visibly behind for seconds.
+    this.resynced = bufferedTick - this.tick > TICK_RATE;
+    if (this.resynced) {
+      this.tick = bufferedTick;
+      return this.tick;
+    }
     const drift = target - (this.tick + elapsed);
     // After a burst, an extra fraction of a second of old motion can hide a
     // direction change even though fresh snapshots are already available.
@@ -77,10 +86,10 @@ export function opponentPoseAt(snapshots, tick, slot) {
 
 // A new snapshot can revise the path even if the clock is still extrapolating.
 // Compare both paths at the same displayed tick so ordinary movement is preserved.
-export function opponentCorrection(previous, snapshots, slot, current) {
+export function opponentCorrection(previous, snapshots, slot, current, resynced = false) {
   const latestTick = snapshots.at(-1).tick;
-  if (previous.tick <= previous.latestTick || latestTick <= previous.latestTick) return null;
-  const revised = opponentPoseAt(snapshots, previous.tick, slot);
+  if (!resynced && (previous.tick <= previous.latestTick || latestTick <= previous.latestTick)) return null;
+  const revised = resynced ? current : opponentPoseAt(snapshots, previous.tick, slot);
   if (previous.pose.life !== current.life || revised.life !== current.life ||
       Boolean(previous.pose.out) !== Boolean(current.out) || Boolean(revised.out) !== Boolean(current.out)) return null;
   return positionKeys.map(key => clamp(previous.pose[key] - revised[key], -1.5, 1.5));

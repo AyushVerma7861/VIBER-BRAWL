@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createDuel, HEAVY, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } from '../public/online-sim.mjs';
-import { packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
+import { DUEL_SILENCE_MS, packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
 import { rewindForView } from './lag-compensation.mjs';
 import { installMatchmaking, matchTicket, regionId } from './matchmaking.mjs';
 
@@ -13,6 +13,8 @@ const maxRooms = 8;
 const waitingMs = 10 * 60_000;
 const reconnectMs = 2 * 60_000;
 const matchReconnectMs = 20_000;
+const lobbyMessageBurst = 80;
+const matchMessageBurst = 256;
 const resumeTokenPattern = /^[A-Za-z0-9_-]{24}$/;
 const rooms = new Map();
 const ticketRooms = new Map();
@@ -370,7 +372,7 @@ sockets.on('connection', client => {
   client.rttMs = 0;
   client.latencyProbeAt = 0;
   client.latencySamples = [];
-  let allowance = 80;
+  let allowance = lobbyMessageBurst;
   let allowanceAt = performance.now();
   let joinTimeout = setTimeout(() => client.close(), 15_000);
   client.on('pong', payload => {
@@ -393,7 +395,11 @@ sockets.on('connection', client => {
   });
   client.on('message', (raw, binary) => {
     const now = performance.now();
-    allowance = Math.min(80, allowance + (now - allowanceAt) * .055) - 1;
+    // A delayed connection can deliver up to eight seconds of 30 Hz input at
+    // once. Keep the same sustained rate and bounded simulation input queue.
+    const match = client.room?.duel;
+    const burst = match && !match.ended ? matchMessageBurst : lobbyMessageBurst;
+    allowance = Math.min(burst, allowance + (now - allowanceAt) * .055) - 1;
     allowanceAt = now;
     if (allowance < 0 || binary) {
       client.disconnectReason = allowance < 0 ? 'message rate' : 'unexpected binary input';
@@ -477,7 +483,7 @@ setInterval(() => {
       : 'This room expired. Create a new invite to play again.');
   }
   for (const client of sockets.clients) {
-    if (client.room?.duel && !client.room.duel.ended && now - client.lastSeenAt > 8000) {
+    if (client.room?.duel && !client.room.duel.ended && now - client.lastSeenAt > DUEL_SILENCE_MS) {
       drop(client, 'no game traffic');
     } else if (now - client.pongAt > 30_000) {
       drop(client, 'heartbeat timeout');

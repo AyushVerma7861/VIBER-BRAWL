@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import WebSocket from 'ws';
-import { unpackFighter } from '../public/online-net.mjs';
+import { DUEL_SILENCE_MS, unpackFighter } from '../public/online-net.mjs';
 import { ATTACK, DASH, HEALTH, LIVES, MATCH_TICKS, QUICK, TICK_RATE } from '../public/online-sim.mjs';
 
 const origin = new URL(process.argv[2] ?? 'http://127.0.0.1:8788').origin;
@@ -184,7 +184,8 @@ class Seat {
 
   input() {
     const state = this.snapshot;
-    if (state && !state.ended && this.ws?.readyState === WebSocket.OPEN && performance.now() - this.lastServerAt > 5000) {
+    if (state && !state.ended && this.ws?.readyState === WebSocket.OPEN &&
+        performance.now() - this.lastServerAt > DUEL_SILENCE_MS) {
       this.ws.terminate();
       return;
     }

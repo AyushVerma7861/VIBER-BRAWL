@@ -1,5 +1,5 @@
 import { ATTACK, DASH, HEAVY, JUMP, QUICK, ROOM_CODE, STEP, TICK_RATE, stepFighter } from './online-sim.mjs';
-import { OpponentClock, opponentCorrection, opponentPoseAt, unpackFighter } from './online-net.mjs';
+import { DUEL_SILENCE_MS, OpponentClock, opponentCorrection, opponentPoseAt, unpackFighter } from './online-net.mjs';
 import { loadRegions, measureRegion, parseRoom, websocketUrl } from './online-lobby.mjs';
 import { mountDiagnostics } from './online-diagnostics.mjs';
 
@@ -494,7 +494,7 @@ export function mountOnline(arena) {
     const dt = Math.min(.05, elapsed);
     if (!latest) { arena.draw(dt); return; }
     const stale = now - receivedAt > snapshotStallMs;
-    if (!latest.ended && socket?.readyState === open && now - lastServerAt > 5000) {
+    if (!latest.ended && socket?.readyState === open && now - lastServerAt > DUEL_SILENCE_MS) {
       connectionLost();
       if (!latest) { arena.draw(dt); return; }
     }
@@ -544,7 +544,7 @@ export function mountOnline(arena) {
     if (!trackOpponent || !lastRemote || remote.life !== lastRemote.pose.life ||
         Boolean(remote.out) !== Boolean(lastRemote.pose.out)) remoteOffset = [0, 0, 0];
     else {
-      const correction = opponentCorrection(lastRemote, snapshots, 1 - slot, remote);
+      const correction = opponentCorrection(lastRemote, snapshots, 1 - slot, remote, opponentClock.resynced);
       if (correction) {
         remoteOffset = correction;
         if (!document.hidden) diagnostics?.remoteCorrection(Math.hypot(...correction));

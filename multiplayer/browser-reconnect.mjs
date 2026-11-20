@@ -12,8 +12,12 @@ import { unpackFighter } from '../public/online-net.mjs';
 
 const origin = new URL(process.argv[2]).origin;
 const chromePath = process.env.DUEL_CHROME || 'google-chrome';
-const checkoutClient = process.argv.includes('--client-from-checkout') ?
-  await readFile(new URL('../public/online-client.mjs', import.meta.url)) : null;
+const checkoutClient = new Map();
+if (process.argv.includes('--client-from-checkout')) {
+  for (const module of ['online-client.mjs', 'online-net.mjs']) {
+    checkoutClient.set('/' + module, await readFile(new URL('../public/' + module, import.meta.url)));
+  }
+}
 const target = new URL('/duel', origin);
 target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
 const seats = ['host', 'guest'].map(name => ({
@@ -37,8 +41,8 @@ const proxy = createServer(async (req, res) => {
   try {
     const path = new URL(req.url, origin);
     if (path.origin !== origin) { res.writeHead(400).end(); return; }
-    if (checkoutClient && path.pathname === '/online-client.mjs') {
-      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }).end(checkoutClient);
+    if (checkoutClient.has(path.pathname)) {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }).end(checkoutClient.get(path.pathname));
       return;
     }
     if (path.pathname === '/duel-regions') {
@@ -97,7 +101,7 @@ proxy.on('upgrade', (request, socket, head) => {
           seat.state = message;
           if (message.ended) finish = message;
         }
-        if (!seat.blocked && browser.readyState === open) browser.send(data, { binary });
+        if (!seat.blocked && !seat.receiveMuted && browser.readyState === open) browser.send(data, { binary });
       });
     });
   });
@@ -175,6 +179,24 @@ const stats = state => fighters(state).map(({ health, lives }) => [health, lives
 const active = state => state?.type === 'state' && state.countdown === 0 && !state.ended;
 const key = (seat, code, held) => seat.evaluate('keys[' + JSON.stringify(code) + '] = ' + held);
 
+async function checkSlowConnection(seat) {
+  const attempts = seat.attempts;
+  const epoch = seat.state.epoch;
+  const label = () => seat.evaluate('document.querySelector("[data-ui=ping]").textContent');
+  seat.receiveMuted = true;
+  try {
+    await sleep(6000);
+    assert.equal(await label(), 'Connection stalled');
+    assert.equal(seat.attempts, attempts, 'a six-second receive stall should keep the existing socket');
+  } finally {
+    seat.receiveMuted = false;
+  }
+  await until(async () => (await label()).endsWith('ms'), 'the original connection to deliver updates again');
+  assert.equal(seat.attempts, attempts);
+  assert.equal(seat.state.epoch, epoch);
+  console.log('A six-second receive stall recovered without reconnecting.');
+}
+
 async function interrupt(affected, ms) {
   const before = seats[0].state;
   const attempts = affected.map(seat => seat.attempts);
@@ -192,12 +214,15 @@ async function interrupt(affected, ms) {
   const resumed = await until(() => transitions.find(message => message.type === 'resumed'),
     'same round to resume');
   const paused = transitions.find(message => message.type === 'paused' && message.epoch === before.epoch);
-  assert.ok(paused, 'the server must pause before resuming');
   assert.equal(resumed.epoch, before.epoch + 1);
   assert.equal(resumed.round, before.round);
-  assert.equal(resumed.tick, paused.tick);
-  assert.equal(resumed.remaining, paused.remaining);
-  assert.deepEqual(stats(resumed), stats(paused));
+  if (affected.length === 1) assert.ok(paused, 'the connected opponent must see the pause');
+  // With both clients offline there may be nobody left to receive the pause.
+  if (paused) {
+    assert.equal(resumed.tick, paused.tick);
+    assert.equal(resumed.remaining, paused.remaining);
+    assert.deepEqual(stats(resumed), stats(paused));
+  }
   assert.deepEqual(stats(resumed), stats(before));
   for (const [index, seat] of affected.entries()) assert.ok(seat.resumes > resumeCounts[index]);
   await until(() => seats.every(seat => active(seat.state) && seat.state.epoch === resumed.epoch &&
@@ -212,7 +237,7 @@ async function interrupt(affected, ms) {
 }
 
 try {
-  console.log('Testing ' + origin + (checkoutClient ? ' with the checkout client' : ' with the deployed client'));
+  console.log('Testing ' + origin + (checkoutClient.size ? ' with the checkout client' : ' with the deployed client'));
   const health = await fetch(origin + '/health', { signal: AbortSignal.timeout(70_000) });
   assert.equal(await health.text(), 'ok');
   proxy.listen(0, '127.0.0.1');
@@ -221,7 +246,7 @@ try {
   const url = 'http://127.0.0.1:' + proxy.address().port + '/online';
   await launchBrowser(host, url);
   await host.evaluate('document.querySelector("[data-ui=create]").click()');
-  const invite = await until(() => host.evaluate('document.querySelector("#duel-link").value'), 'private invite');
+  const invite = await until(() => host.evaluate('document.querySelector("#duel-link").value'), 'private invite', 70_000);
   await launchBrowser(guest, invite);
   await guest.evaluate('document.querySelector("[data-ui=join-form]").requestSubmit()');
   await until(() => seats.every(seat => active(seat.state)), 'the duel countdown');
@@ -235,8 +260,9 @@ try {
   await until(() => seats.every(seat => active(seat.state) && !fighters(seat.state)[0].out),
     'the host to respawn after losing a stock');
   console.log('Both browsers joined the private duel and saw the first stock loss.');
-  await interrupt([guest], 9500);
-  await interrupt(seats, 10_000);
+  await checkSlowConnection(guest);
+  await interrupt([guest], 10_500);
+  await interrupt(seats, 11_500);
   assert.ok(seats.every(seat => seat.room === room));
   await key(host, 'KeyA', true);
   try {
