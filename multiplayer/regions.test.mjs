@@ -5,7 +5,6 @@ import { createServer } from 'node:net';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
 import WebSocket from 'ws';
-import { GAME_ORIGIN } from './live-regions.mjs';
 
 async function getPort() {
   const server = createServer().listen(0, '127.0.0.1');
@@ -45,8 +44,6 @@ test('both regions use one queue and the selected server owns the room and recon
   const pong = await fetch(fra + '/duel-ping', { headers: { Origin: sin }, signal: AbortSignal.timeout(8000) });
   assert.equal(pong.headers.get('access-control-allow-origin'), sin);
   assert.deepEqual(await pong.json(), { region: 'fra' });
-  const sitePong = await fetch(fra + '/duel-ping', { headers: { Origin: GAME_ORIGIN }, signal: AbortSignal.timeout(8000) });
-  assert.equal(sitePong.headers.get('access-control-allow-origin'), GAME_ORIGIN);
   assert.equal((await fetch(fra + '/duel-reservation', { method: 'POST' })).status, 403);
 
   async function connect(host, origin, path) {
@@ -63,7 +60,7 @@ test('both regions use one queue and the selected server owns the room and recon
   }
   const send = (socket, data) => socket.send(JSON.stringify(data));
   async function match(pings, preferred = '') {
-    const [a, b] = await Promise.all([connect(sin, GAME_ORIGIN, '/duel-queue'), connect(sin, fra, '/duel-queue')]);
+    const [a, b] = await Promise.all([connect(sin, sin, '/duel-queue'), connect(sin, fra, '/duel-queue')]);
     const assigned = Promise.all([a, b].map(socket => message(socket, m => m.type === 'match')));
     send(a, { type: 'search', pings: pings[0], preferred });
     send(b, { type: 'search', pings: pings[1] });
@@ -103,7 +100,7 @@ test('both regions use one queue and the selected server owns the room and recon
   const manual = await match([{ sin: 100, fra: 20 }, { sin: 100, fra: 20 }], 'sin');
   assert.deepEqual(manual.map(m => m.region), ['sin', 'sin']);
 
-  const privateHost = await connect(fra, GAME_ORIGIN, '/duel');
+  const privateHost = await connect(fra, sin, '/duel');
   const invite = message(privateHost, m => m.type === 'joined');
   send(privateHost, { type: 'create' });
   const { code } = await invite;

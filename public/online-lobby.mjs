@@ -38,13 +38,8 @@ export async function measureRegion(region, signal) {
 export function parseRoom(value, regions, localOrigin) {
   try {
     const url = new URL(value);
-    const code = url.searchParams.get('room') || '';
-    if (url.origin === localOrigin && url.searchParams.has('region')) {
-      const region = regions.get(url.searchParams.get('region'));
-      return region ? { code, origin: region.origin } : null;
-    }
     if (url.origin !== localOrigin && ![...regions.values()].some(region => region.origin === url.origin)) return null;
-    return { code, origin: url.origin };
+    return { code: url.searchParams.get('room') || '', origin: url.origin };
   } catch {
     return { code: value, origin: null };
   }

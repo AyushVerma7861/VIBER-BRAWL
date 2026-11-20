@@ -4,20 +4,7 @@ import { on, once } from 'node:events';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
 import WebSocket from 'ws';
-import { parseRoom } from '../public/online-lobby.mjs';
 import { unpackFighter } from '../public/online-net.mjs';
-import { GAME_ORIGIN, LIVE_REGIONS } from './live-regions.mjs';
-
-test('main-site and older regional invites both select the original room server', () => {
-  const regions = new Map(LIVE_REGIONS.map(region => [region.id, region]));
-  const code = 'a1234567890Z';
-  const frankfurt = regions.get('fra').origin;
-  assert.deepEqual(parseRoom(`${GAME_ORIGIN}/online?room=${code}&region=fra`, regions, GAME_ORIGIN), { code, origin: frankfurt });
-  assert.deepEqual(parseRoom(`${frankfurt}/online?room=${code}`, regions, GAME_ORIGIN), { code, origin: frankfurt });
-  assert.deepEqual(parseRoom(code, regions, GAME_ORIGIN), { code, origin: null });
-  assert.equal(parseRoom(`${GAME_ORIGIN}/online?room=${code}&region=unknown`, regions, GAME_ORIGIN), null);
-  assert.equal(parseRoom(`https://example.com/online?room=${code}`, regions, GAME_ORIGIN), null);
-});
 
 test('the invite survives a host refresh and both seats can resume a paused duel', { timeout: 20_000 }, async t => {
   const server = spawn(process.execPath, ['multiplayer/server.mjs'], {

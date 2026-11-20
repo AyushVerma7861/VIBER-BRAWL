@@ -6,7 +6,6 @@ import { createDuel, HEAVY, NONE, QUICK, ROOM_CODE, STEP, TICK_RATE, stepDuel } 
 import { DUEL_SILENCE_MS, packFighter, SNAPSHOT_EVERY } from '../public/online-net.mjs';
 import { rewindForView } from './lag-compensation.mjs';
 import { installMatchmaking, matchTicket, regionId } from './matchmaking.mjs';
-import { GAME_ORIGIN } from './live-regions.mjs';
 
 const port = Number(process.env.PORT || 8788);
 const host = process.env.HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
@@ -37,8 +36,7 @@ if (regions.size && (!regions.has(localRegion) || !regions.has(coordinator) || r
 function allowed(request) {
   try {
     const origin = new URL(request.headers.origin);
-    return origin.host === request.headers.host || (regions.size > 0 && origin.origin === GAME_ORIGIN) ||
-      [...regions.values()].some(region => region.origin === origin.origin);
+    return origin.host === request.headers.host || [...regions.values()].some(region => region.origin === origin.origin);
   } catch { return false; }
 }
 
@@ -81,7 +79,7 @@ const server = createServer((request, response) => {
   if (path === '/duel-regions') {
     const list = regions.size ? [...regions.values()] : [{ id: localRegion, name: 'Local', origin: '' }];
     response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-      .end(JSON.stringify({ local: localRegion, coordinator, regions: list, ...(regions.size && { menuUrl: GAME_ORIGIN }) }));
+      .end(JSON.stringify({ local: localRegion, coordinator, regions: list }));
     return;
   }
   if (path === '/duel-ping') {
