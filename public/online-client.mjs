@@ -30,7 +30,7 @@ export function mountOnline(arena) {
   panel.className = 'duel-panel';
   panel.innerHTML = `
     <div class="duel-lobby">
-      <p class="duel-label">VIBER BRAWL / ONLINE ALPHA</p>
+      <p class="duel-label">VIBER BRAWL / ONLINE PREVIEW</p>
       <h1>Dungeon Duel</h1>
       <p data-ui="status" role="status">Online 1v1. Three stocks each.</p>
       <div data-ui="entry">
@@ -56,6 +56,7 @@ export function mountOnline(arena) {
         <p class="duel-help">Keep this host tab open. Open the invite on another device or in a second tab.</p>
       </div>
       <button data-ui="rematch" type="button" hidden>Rematch</button>
+      <a class="duel-menu" data-ui="menu" hidden>Back to Viber Brawl</a>
       <p class="duel-help">Move with WASD or arrows. Space to jump, Shift to dash, J for quick hit and K for heavy hit. On a phone, play in landscape.</p>
     </div>`;
   const matchBar = document.createElement('div');
@@ -154,7 +155,7 @@ export function mountOnline(arena) {
     else stopProbes();
   };
   regionField.onchange = updateRegionSummary;
-  loadRegions().then(value => {
+  const regionConfig = loadRegions().then(value => {
     if (!value) return;
     config = value;
     for (const [id, region] of value.regions) {
@@ -165,8 +166,18 @@ export function mountOnline(arena) {
     }
     ui.servers.hidden = regions.size < 2;
     ui.quick.hidden = false;
+    if (value.menuUrl) {
+      ui.menu.href = value.menuUrl;
+      ui.menu.hidden = false;
+    }
     updateRegionSummary();
   });
+  async function serversReady() {
+    await regionConfig;
+    if (config) return true;
+    setStatus('Could not load the servers. Reload this page to try again.');
+    return false;
+  }
   function rememberSeat(value) {
     seat = value;
     ui.resume.hidden = !value;
@@ -283,8 +294,11 @@ export function mountOnline(arena) {
           if (message.resumeToken) rememberSeat({ code: message.code, token: message.resumeToken, inMatch: message.inMatch, origin });
           if (message.inMatch) break;
           if (message.matchmaking) { setStatus('Waiting for your match to start…'); break; }
-          const link = new URL('/online', origin);
+          const region = [...regions.values()].find(candidate => candidate.origin === origin);
+          const sharedInvite = config?.sharedInvites && region;
+          const link = new URL('/online', sharedInvite ? location.origin : origin);
           link.searchParams.set('room', message.code);
+          if (sharedInvite) link.searchParams.set('region', region.id);
           linkField.value = link.href;
           ui.invite.hidden = slot !== 0;
           const name = regionName(origin);
@@ -334,7 +348,9 @@ export function mountOnline(arena) {
     return Number.isFinite(rtt) ? (name ? name + ' · ' : '') + Math.round(rtt) + ' ms' : name || '';
   }
 
-  ui.create.onclick = () => connect(null, null, bestOrigin());
+  ui.create.onclick = async () => {
+    if (await serversReady()) connect(null, null, bestOrigin());
+  };
   ui.quick.onclick = async () => {
     if (!config || socket || queue) return;
     closeConnection();
@@ -381,18 +397,20 @@ export function mountOnline(arena) {
       if (queue === connection) reset('Matchmaking disconnected. Select Quick Match to retry.');
     };
   };
-  ui.resume.onclick = () => {
-    if (!seat) return;
+  ui.resume.onclick = async () => {
+    if (!await serversReady() || !seat) return;
+    if (seat.origin && !knownOrigin(seat.origin)) { setStatus('This server is unavailable. Start a new duel.'); return; }
     reconnectUntil = Date.now() + 15_000;
     retryDelay = 500;
-    if (seat.origin && !knownOrigin(seat.origin)) { setStatus('Checking the server list. Try Resume again in a moment.'); return; }
     connect(seat.code, seat.token, seat.origin);
   };
-  ui['join-form'].onsubmit = event => {
+  ui['join-form'].onsubmit = async event => {
     event.preventDefault();
-    const room = parseRoom(codeField.value.trim(), regions, location.origin);
+    if (!await serversReady()) return;
+    const code = codeField.value.trim();
+    const room = parseRoom(code === invitation && ROOM_CODE.test(invitation) ? location.href : code, regions, location.origin);
     if (!room || !ROOM_CODE.test(room.code)) { setStatus('Enter a valid room code or invite link.'); return; }
-    connect(room.code, null, room.origin || (ROOM_CODE.test(invitation) ? location.origin : preferredOrigin()));
+    connect(room.code, null, room.origin || preferredOrigin());
   };
   ui.copy.onclick = async () => {
     try {

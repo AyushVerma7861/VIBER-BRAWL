@@ -1,6 +1,6 @@
 # Dungeon Duel alpha
 
-Online 1v1 in VIBER BRAWL’s Dungeon. Select Quick Match to find an opponent, or create a private room and send the invite link. To test a private room alone, open the invite in a second tab. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
+Online 1v1 in VIBER BRAWL’s Dungeon. Select **Online Duel** from the game's main menu, then select Quick Match to find an opponent, or create a private room and send the invite link. To test a private room alone, open the invite in a second tab. Each match lasts up to three minutes with three stocks per fighter. At time, compare remaining stocks, then current health. Both players can select Rematch after a result.
 
 Open Servers to see recent ping or select a region. Quick Match uses a shared queue for all regions. Auto picks the compatible region with the lowest ping for the slower player, using combined ping to break ties. Manual selection restricts the search to that region. The search widens from 160 ms to 350 ms after the older player has waited 20 seconds and expires after two minutes. A private invite always opens the server that created the room.
 
@@ -36,7 +36,7 @@ If the host disconnects while waiting, they can resume on the same invite for up
 
 ## Host for ₹0
 
-Use **Free** Node web services in Singapore and Frankfurt from `preview/dungeon-duel`, with build command `npm ci && npm test`, start command `npm start`, and health path `/health`. Share the Singapore `/online` URL. The same process serves the game and the WebSocket, so no separate frontend, database or domain is needed. Use the existing GitHub/Cloudflare process for the main game.
+Use **Free** Node web services in Singapore and Frankfurt from `preview/dungeon-duel`, with build command `npm ci && npm test`, start command `npm start`, and health path `/health`. The main game serves `/online` and its region directory through the existing GitHub/Cloudflare deployment. The browser connects directly to the match server, and both Render services can also serve the lobby at `/online`. Keep `multiplayer/live-regions.mjs` in sync if the public game or match server origins change.
 
 Set `DUEL_REGION` to the service's region ID, `DUEL_COORDINATOR` to `sin` on both services, and `DUEL_REGIONS` on both to the same JSON object. Each key is a region ID, and its value has a `name` and `origin`. Set the same random `DUEL_REGION_SECRET` on both servers through the host's environment settings. The secret authorizes match reservations between the servers. A single local process works without these variables.
 

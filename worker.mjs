@@ -25,6 +25,8 @@
  *   SESSION_TTL   = seconds (default 600)
  */
 
+import { COORDINATOR, LIVE_REGIONS } from './multiplayer/live-regions.mjs';
+
 const PRIVY_BASE = 'https://auth.privy.io/api/v1';
 const SESSION_COOKIE = 'trials_session';
 
@@ -812,11 +814,25 @@ export default {
       if (path === '/_worker.js' || path === '/wrangler.toml' || path.startsWith('/gate/')) {
         return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
       }
-      /* the shell is served through here purely to attach security headers */
-      if (path === '/' || path === '/index.html') {
-        /* pass the request through untouched. Rewriting it to /index.html made
-           Cloudflare redirect back to /, and we followed it forever. */
-        const asset = await env.ASSETS.fetch(request);
+      if (path === '/duel-regions') {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          return new Response(null, { status: 405, headers: { allow: 'GET, HEAD' } });
+        }
+        const response = json({
+          local: COORDINATOR, coordinator: COORDINATOR, regions: LIVE_REGIONS,
+          menuUrl: '/', sharedInvites: true,
+        });
+        return request.method === 'HEAD' ? new Response(null, response) : response;
+      }
+      if (path === '/online/') {
+        url.pathname = '/online';
+        return Response.redirect(url, 308);
+      }
+      /* Use the root asset for the online route so Cloudflare's HTML
+         canonicalization does not redirect the browser back to the menu. */
+      if (path === '/' || path === '/index.html' || path === '/online') {
+        const assetRequest = path === '/online' ? new Request(new URL('/', url), request) : request;
+        const asset = await env.ASSETS.fetch(assetRequest);
         const res = new Response(asset.body, asset);
         res.headers.set('content-type', 'text/html; charset=utf-8');
   res.headers.set('x-frame-options', 'SAMEORIGIN');

@@ -101,6 +101,8 @@
   .tagline{ text-align:center; font-weight:800; letter-spacing:5px; font-size:clamp(11px,2.4vw,16px); margin-top:10px; color:var(--muted); }
   .btn{ display:block; width:100%; margin:8px 0; background:var(--lime); color:var(--ink); border:4px solid var(--outline); border-radius:16px; padding:11px 20px; font-family:inherit; font-size:21px; font-weight:800; letter-spacing:1px; box-shadow:0 6px 0 var(--outline), 0 0 24px rgba(223,249,2,.2); cursor:pointer; transition: transform .07s, box-shadow .07s, background .15s; }
   .btn:hover{ filter:brightness(1.05); }
+  a.btn{ box-sizing:border-box; text-decoration:none; text-align:center; }
+  .btn.online{ background:var(--vibe-purple); color:#fff; }
   .btn:active{ transform:translateY(5px); box-shadow:0 1px 0 var(--outline); }
   .btn.green{ background:var(--lime-text); } .btn.blue{ background:var(--blue); color:#fff; } .btn.pink{ background:var(--pink); color:var(--ink); }
   .btn.small{ font-size:16px; padding:8px 14px; }
@@ -1010,6 +1012,7 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid 
   <div class="tagline">LAST VIBER STANDING</div>
   <div class="menuBtns" style="width:100%; max-width:340px; margin-top:22px;">
     <button class="btn" id="btnPlay">PLAY</button>
+    <a class="btn online" id="btnOnline" href="/online">ONLINE DUEL</a>
     <button class="btn blue" id="btnHow">HOW TO PLAY</button>
     <button class="btn pink" id="btnChars">VIBER SELECT</button>
     <button id="btnGuide" style="display:none" aria-hidden="true"></button>

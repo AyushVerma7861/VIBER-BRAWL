@@ -31,6 +31,7 @@ body.online-duel:not(.duel-playing) #touch { display: none; }
 .duel-lobby p { margin: 8px 0 12px; }
 .duel-lobby .duel-label { margin: 0 0 5px; color: #dff902; letter-spacing: .09em; font-size: 12px; }
 .duel-lobby .duel-help { color: #cbc5b8; font-size: 13px; margin-bottom: 0; }
+.duel-menu { display: inline-block; margin-top: 12px; color: #dff902; }
 .duel-lobby label { display: block; margin: 7px 0 3px; font-size: 14px; }
 .duel-row { display: flex; gap: 8px; }
 .duel-actions { flex-wrap: wrap; margin: 8px 0; }
