@@ -39,6 +39,6 @@ jobs:
       - name: Run live matches from the hosted runner
         if: matrix.suite == 'matches'
         run: npm run test:matches -- "${{ matrix.origin }}"
-      - name: Run Chrome reconnect test against a live duel
+      - name: Run Chrome reconnect test using the deployed game
         if: matrix.suite == 'browser-reconnect'
-        run: node multiplayer/browser-reconnect.mjs "${{ matrix.origin }}" --client-from-checkout
+        run: node multiplayer/browser-reconnect.mjs "${{ matrix.origin }}"
