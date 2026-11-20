@@ -20,12 +20,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        region: [Singapore, Frankfurt]
+        suite: [matches, browser-reconnect]
         include:
           - region: Singapore
             origin: https://viber-brawl-online.onrender.com
           - region: Frankfurt
             origin: https://viber-brawl-online-eu.onrender.com
-    name: ${{ matrix.region }}
+    name: ${{ matrix.region }} / ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,4 +37,8 @@ jobs:
           node-version: '24.22.1'
       - run: npm ci
       - name: Run live matches from the hosted runner
+        if: matrix.suite == 'matches'
         run: npm run test:matches -- "${{ matrix.origin }}"
+      - name: Run Chrome reconnect test against a live duel
+        if: matrix.suite == 'browser-reconnect'
+        run: node multiplayer/browser-reconnect.mjs "${{ matrix.origin }}" --client-from-checkout
